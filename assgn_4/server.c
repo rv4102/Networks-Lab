@@ -136,14 +136,14 @@ int main()
 
                 FILE *file  = fopen(path+1, "r");
                 char response_[1000];
-                // FILE *file_write = fopen("file_write.pdf", "w");
-                // if(file_write == NULL){
-                //     printf("File not found\n");
-                //     close(newsockfd);
-                //     exit(0);
-                // }
+               
                 if(file == NULL){
                     printf("File not found\n");
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "HTTP/1.1 404 Not Found\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    memset(response_, '\0', 1000);
+                    send(newsockfd, response_, strlen(response_)+1, 0);
                     close(newsockfd);
                     exit(0);
                 }
@@ -204,6 +204,14 @@ int main()
                 
             }else{
                 printf("Invalid command\n");
+
+                char response_[1000];
+                memset(response_, '\0', 1000);
+                strcat(response_, "HTTP/1.1 400 Bad Request\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                memset(response_, '\0', 1000);
+                send(newsockfd, response_, strlen(response_)+1, 0);
+                
             }
 			close(newsockfd);
 			exit(0);
