@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <fcntl.h>
 
 // void recv_msg(char *buf, int sockfd, int n){
 //     for(int i=0; i < 1000; i++) buf[i] = '\0';
@@ -32,29 +33,68 @@
 // }
 
 
-int recv_msg(char *buf, int sockfd, int n){
-    // for(int i=0; i < 10000; i++) buf[i] = '\0';
-    memset(buf, '\0', n);
+// int recv_msg(char *buf, int sockfd, int n){
+//     // for(int i=0; i < 10000; i++) buf[i] = '\0';
+//     memset(buf, '\0', n);
 
+// 	int k = 0;
+// 	while(1){
+// 		char buffer[n];
+// 		for(int i = 0;i<n;i++) buffer[i] = '\0';
+// 		int nn = recv(sockfd, buffer, n, 0);
+// 		// printf("%s", buffer);
+// 		int end = 0;
+// 		for(int i = 0;i<nn;i++){
+// 			if(buffer[i]=='\0'){
+// 				end = 1; break;
+// 			}
+//             if(k && k%n==0) buf = (char *)realloc(buf, (k/n + 1)*n);
+// 			buf[k++] = buffer[i];
+// 		}
+// 		if(end) break;
+// 	}
+//     return k;
+
+// }
+
+int recv_msg(char *buf, int sockfd, int n, int tot){
+    memset(buf, '\0', n);
+    char *body_start;
+    int body = 0;
 	int k = 0;
+	int fd = open("a.pdf", O_WRONLY | O_CREAT, 0666);
+
+    int curr_tot = 0;
 	while(1){
 		char buffer[n];
 		for(int i = 0;i<n;i++) buffer[i] = '\0';
 		int nn = recv(sockfd, buffer, n, 0);
-		int end = 0;
 		for(int i = 0;i<nn;i++){
-			if(buffer[i]=='\0'){
-				end = 1; break;
-			}
+            if(body){
+                curr_tot++;
+                continue;
+            }
             if(k && k%n==0) buf = (char *)realloc(buf, (k/n + 1)*n);
 			buf[k++] = buffer[i];
+            body_start = strstr(buf, "\r\n\r\n");
+            if(body_start!=NULL){
+                body = 1;
+
+				// int n = header_parse(buf);
+				// error handling
+            
+			}
 		}
-		if(end) break;
+		write(fd, buffer, nn);
+        if(curr_tot >= tot) break;
 	}
+	close(fd);
+
+
+
     return k;
 
 }
-
 int main(int argc, char *argv[])
 {
 	int			sockfd ;
@@ -90,10 +130,10 @@ int main(int argc, char *argv[])
 
     char *buffer;
     buffer = (char *)malloc(10);
-    int n = recv_msg(buffer, sockfd, 10);
+    int n = recv_msg(buffer, sockfd, 10, 113598);
 
     // printf("%d", n);
-	printf("%s", buffer);		
+	// printf("%s", buffer);		
 	close(sockfd);
 	// free(buf);
 	return 0;

@@ -18,6 +18,7 @@ process and a client process.
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <fcntl.h>
 
 			/* THE SERVER PROCESS */
 
@@ -139,7 +140,8 @@ int main()
 
                 printf("host_name: %s\n", host_name);
 
-                FILE *file  = fopen(path+1, "r");
+                FILE *file = fopen(path+1, "r");
+                int file_fd  = open(path+1, O_RDONLY);
                 char response_[1000];
                
                 if(file == NULL){
@@ -161,8 +163,7 @@ int main()
                 strcat(response_, "Expires: ");
                 printf("time_string: %s", time_string);
                 strcat(response_, time_string);
-                // printf("%d\n", sizeof(time_string));
-                // strcat(response_, "\n");
+
                 for(int i = 0;;i++){
                     if(response_[i] == '\n'){
                         response_[i] = '\r';
@@ -203,14 +204,15 @@ int main()
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
-                fseek(file, 0, SEEK_SET);
-                while(fgets(response_, 1000, file)!= NULL){
-                    send(newsockfd, response_, strlen(response_), 0);
+
+                int b;
+                while((b = read(file_fd, response_, 1000))>0){
+                    send(newsockfd, response_, b, 0);
                 }
                 memset(response_, '\0', 1000);
-                send(newsockfd, response_, strlen(response_)+1, 0);
+                
                 fclose(file);
-
+                close(file_fd);
 
             }else if(strcmp(token, "PUT")==0){
 
