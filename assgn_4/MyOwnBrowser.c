@@ -72,7 +72,12 @@ void parse_addr(char *url, char *ip, char *port, char *fname){
 
     while( url[ptr] != '/') ptr--;
     ptr++;
-    strcpy(fname, url+ptr);    
+
+    size_t ptr1=0;
+    while(url[ptr] != ':'){
+        fname[ptr1++] = url[ptr];
+        ptr++;
+    }   
 }
 
 void get_content_type(char *url, char *type){
@@ -147,7 +152,7 @@ int check_header(char *header, char *command){
             printf("File Not Found on server.\n");
         }
     }
-    else( strcmp(command, "PUT")==0 ){
+    else if( strcmp(command, "PUT")==0 ){
         if( strcmp(status, "200")==0 ){
             printf("Request successful. File is being sent.\n");
             return 1;
@@ -167,13 +172,11 @@ void frame_request(char **cmd_list, char *filetype, char *accept_lang, char *ip,
     char *content_language, char *content_length, char *http_request) {
 
     size_t ptr_1=0, ptr_2=0;
-    char type[20], current_time[40], last_modified_time[40];
+    char current_time[40], last_modified_time[40];
 
     get_times(last_modified_time, current_time);
 
-    http_request[0]='\0';
-    strcat(http_request, cmd_list[0]);
-    // strcpy(http_request, cmd_list[0]);
+    strcpy(http_request, cmd_list[0]);
     strcat(http_request, " ");
 
     // get the url
@@ -184,15 +187,14 @@ void frame_request(char **cmd_list, char *filetype, char *accept_lang, char *ip,
         http_request[ptr_2++] = cmd_list[1][ptr_1];
         ptr_1++;
     }
+    http_request[ptr_2] = '\0';
 
     strcat(http_request, " HTTP/1.1\r\n");
-
     strcat(http_request, "Host: ");
     strcat(http_request, ip);
     strcat(http_request, ": ");
     strcat(http_request, port);
     strcat(http_request, "\r\n");
-
     strcat(http_request, "Connection: close\r\n");
     strcat(http_request, "Date: ");
     strcat(http_request, current_time);
@@ -219,12 +221,36 @@ void frame_request(char **cmd_list, char *filetype, char *accept_lang, char *ip,
     return;
 }
 
+int recv_msg(char *buf, int sockfd, int n){
+    // for(int i=0; i < 10000; i++) buf[i] = '\0';
+    memset(buf, '\0', n);
+
+	int k = 0;
+	while(1){
+		char buffer[n];
+		for(int i = 0;i<n;i++) buffer[i] = '\0';
+		int nn = recv(sockfd, buffer, n, 0);
+        printf("%s", buffer);
+		int end = 0;
+		for(int i = 0;i<nn;i++){
+			if(buffer[i]=='\0'){
+				end = 1; break;
+			}
+            if(k && k%n==0) buf = (char *)realloc(buf, (k/n + 1)*n);
+			buf[k++] = buffer[i];
+		}
+		if(end) break;
+	}
+    return k;
+
+}
+
 // receive data in packets and return the length of received data
 void recv_and_parse(char *command, char *fname, int sockfd){
     size_t end=0, i, j, h_fixed_ptr=0, statusOK=0;
     char packet[BUFSIZE];
     int gettingHeader=1;
-    char version[20], code[5], response[5], header[1024], data[256], *tok;
+    char version[20], code[5], response[5], header[4096]="\0", data[256];
 
     FILE *fp;
     fp = fopen(fname, "w");
@@ -236,6 +262,8 @@ void recv_and_parse(char *command, char *fname, int sockfd){
             perror("recv() error.\n");
             exit(1);
         }
+
+        printf("%s\n", packet);
 
         // check if this is the last packet
         for(i=0; i<BUFSIZE; i++){
@@ -250,7 +278,7 @@ void recv_and_parse(char *command, char *fname, int sockfd){
                     // we have characters after "\r\n\r\n"
                     i += 3;
                     header[i] = '\0';
-                    printf("The header received is:\n%s\n", header);
+                    // printf("The header received is:\n%s\n", header);
 
                     // any content after the header is concatenated to body
                     if( i+1<strlen(header) ) strcat(data, header+i+1);
@@ -263,7 +291,8 @@ void recv_and_parse(char *command, char *fname, int sockfd){
         // we are getting the body of the message
         else{
             if( data[0] != '\0' ){
-                fprintf(fp, "%s", data);
+                // fprintf(fp, "%s", data);
+                // printf("%s", data);
                 bzero(data, 256); // empty the data
                 continue;
             }
@@ -273,7 +302,8 @@ void recv_and_parse(char *command, char *fname, int sockfd){
             else
                 statusOK = 1;
             
-            fprintf(fp, "%s", packet);
+            // fprintf(fp, "%s", packet);
+            // printf("%s", packet);
             bzero(packet, BUFSIZE);
         }
     }
@@ -288,7 +318,7 @@ int main(){
     int sockfd, port_;
     struct sockaddr_in serv_addr;
     size_t n=0;
-    char *msg, **cmd_list, ip[16], port[6], http_request[4096], http_response[8192], header[4096], filename[100], type[20];
+    char *msg, **cmd_list, ip[16], port[6], http_request[4096], http_response[4096], header[4096], filename[100], type[20];
 
     msg = (char *)malloc(MAXRETSIZE * sizeof(char));
     cmd_list = (char **)malloc(sizeof(char *) * 3);
@@ -296,15 +326,16 @@ int main(){
         cmd_list[i] = (char *)malloc(sizeof(char) * MAXRETSIZE);
     }
 
-    if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
-		perror("socket() failed.\n");
-		exit(-1);
-	}
-
     while(1){
+        if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+            perror("socket() failed.\n");
+            exit(-1);
+        }
+
         printf("MyOwnBrowser> ");
         getline(&msg, &n, stdin);
         split_command(msg, strlen(msg), cmd_list);
+
         if( strcmp(cmd_list[0], "GET") == 0 ){
             // parse the address
             parse_addr(cmd_list[1], ip, port, filename);
@@ -325,13 +356,17 @@ int main(){
             // create an http request
             frame_request(cmd_list, type, "en-us", ip, port, "en-us", "\0", http_request);
 
-            printf("Request sent:\n\n%s\n\n", http_request);
+            // printf("Request sent:\n\n%s\n\n", http_request);
 
             // send this as packets
             send_as_packet(http_request, sockfd);
 
             // parse and receive the response
-            recv_and_parse(cmd_list[0], filename, sockfd);
+            // recv_and_parse(cmd_list[0], filename, sockfd);
+            recv_msg(http_response, sockfd, 4096);
+
+            // close connection to the server
+            close(sockfd);
 
             // open the saved file inside an appropriate application 
             char *argv[256];
