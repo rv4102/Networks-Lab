@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
 
 	printf("Server connected\n");
 
-    char buf[] = "GET /Assgn-4.pdf HTTP/1.1\nHost:localhost:8000\nUser-Agent:Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0\nAccept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\nAccept:pdf\nAccept-Language:en-US,en;q=0.5\nConnection:close\n\n\n";
+    char buf[] = "PUT /A4.txt HTTP/1.1\r\nHost:localhost:8000\r\nUser-Agent:Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0\r\nAccept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept:pdf\r\nAccept-Language:en-US,en;q=0.5\r\nConnection:close\r\n\r\nksjdhashdjkasdjkasndjknasjkdnaksndkasndasndjkasndjkasndjknasjkdnasjkndasjndjkasnk";
     // printf("%d", int(strlen(buf));
     send(sockfd, buf, strlen(buf)+1, 0);
 
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 
     char *buffer;
     buffer = (char *)malloc(10);
-    int n = recv_msg(buffer, sockfd, 10);
+    // int n = recv_msg(buffer, sockfd, 10);
 
     // printf("%d", n);
 	printf("%s", buffer);		

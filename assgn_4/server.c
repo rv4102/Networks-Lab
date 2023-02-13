@@ -102,6 +102,7 @@ int main()
 			char *buffer;
             buffer = (char *)malloc(10);
             int n = recv_msg(buffer, newsockfd, 10);
+            char *dup = strdup(buffer);
             
             // char new_time[100];
             time_t current_time = time(NULL);
@@ -117,7 +118,7 @@ int main()
 
             char client_ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-            fprintf(file_log, "%02d%02d%02d:%02d%02d%02d:%s:%d:",current_times->tm_mday, current_times->tm_mon+1, current_times->tm_year-100, current_times->tm_hour, current_times->tm_min, current_times->tm_sec, client_ip, ntohs(cli_addr.sin_port));
+            fprintf(file_log, "%02d%02d%02d:%02d%02d%02d:%s:%d:",current_times->tm_mday-3, current_times->tm_mon+1, current_times->tm_year-100, current_times->tm_hour, current_times->tm_min, current_times->tm_sec, client_ip, ntohs(cli_addr.sin_port));
 
             if(strcmp(token, "GET")==0){
                 char *path  = strtok(NULL, " ");
@@ -126,13 +127,17 @@ int main()
                 fprintf(file_log, "%s:%s\n", token, path);
                 char *http_version = strtok(NULL, "\n");
                 printf("http_version: %s\n", http_version);
-                if(strcmp(http_version, "HTTP/1.1")){
+                if(strcmp(http_version, "HTTP/1.1\r")){
                     printf("Invalid HTTP version\n");
                     close(newsockfd);
                     exit(0);
                 }
 
+                char *host = strtok(NULL, "\n");
+                char *host_name = strtok(host, ":");
+                host_name = strtok(NULL, ":");
 
+                printf("host_name: %s\n", host_name);
 
                 FILE *file  = fopen(path+1, "r");
                 char response_[1000];
@@ -191,17 +196,78 @@ int main()
                 memset(response_, '\0', 1000);
                 fseek(file, 0, SEEK_SET);
                 while(fgets(response_, 1000, file)!= NULL){
-                    // printf("%s", response_);
                     send(newsockfd, response_, strlen(response_), 0);
                 }
                 memset(response_, '\0', 1000);
                 send(newsockfd, response_, strlen(response_)+1, 0);
                 fclose(file);
-                // fclose(file_write);
 
 
             }else if(strcmp(token, "PUT")==0){
-                
+
+                char *path = strtok(NULL, " ");
+                printf("path: %s\n", path);
+                char *html_version = strtok(NULL, "\n");
+                if(strcmp(html_version, "HTTP/1.1\r")){
+                    printf("Invalid HTTP version\n");
+                    close(newsockfd);
+                    exit(0);
+                }
+
+                char *host = strtok(NULL, "\n");
+                char *host_name;
+                int i = 0;
+
+                while(1){
+                    if(host[i] == ':'){
+                        host_name = host+i+1;
+                        if(host_name[0]==' '){
+                            host_name = host_name+1;
+                        }
+                        break;
+                    }
+                    i++;
+                }
+                printf("host_name: %s\n", host_name);
+                char *content_length, *content_type;
+                while(1){
+                    char *header = strtok(NULL, "\n");
+                    if(strcmp(header, "\r")==0){
+                        break;
+                    }
+                    char header_name[100];
+                    memset(header_name, '\0', 100);
+                    i = 0;
+                    while(1){
+                        if(header[i] == ':'){
+                            strncpy(header_name, header, i);
+                            break;
+                        }
+                        i++;
+                    }
+                    if(strcmp(header_name, "Content-Length")==0){
+                        content_length = header+i+1;
+                    }else if(strcmp(header_name, "Content-Type")==0){
+                        content_type = header+i+1;
+                    }
+
+                }
+
+                printf("content_length: %s\n", content_length);
+                printf("content_type: %s\n", content_type);
+
+                char *body_start = strstr(dup, "\r\n\r\n");
+                body_start = body_start+4;
+
+                char body[1000000];
+                memset(body, '\0', 1000000);
+                strcpy(body, body_start);
+                printf("body: %s\n", body);
+
+                FILE *file = fopen(path+1, "w");
+                fprintf(file, "%s", body);
+                fclose(file);
+
             }else{
                 printf("Invalid command\n");
 
