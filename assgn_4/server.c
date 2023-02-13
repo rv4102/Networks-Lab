@@ -145,7 +145,7 @@ int main()
                 if(file == NULL){
                     printf("File not found\n");
                     memset(response_, '\0', 1000);
-                    strcat(response_, "HTTP/1.1 404 Not Found\n");
+                    strcat(response_, "HTTP/1.1 404 Not Found\r\n");
                     send(newsockfd, response_, strlen(response_), 0);
                     memset(response_, '\0', 1000);
                     send(newsockfd, response_, strlen(response_)+1, 0);
@@ -154,21 +154,30 @@ int main()
                 }
                 
                 memset(response_, '\0', 1000);
-                strcat(response_, "HTTP/1.1 200 OK\n");
+                strcat(response_, "HTTP/1.1 200 OK\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
                 
                 memset(response_, '\0', 1000);
                 strcat(response_, "Expires: ");
+                printf("time_string: %s", time_string);
                 strcat(response_, time_string);
+                // printf("%d\n", sizeof(time_string));
                 // strcat(response_, "\n");
+                for(int i = 0;;i++){
+                    if(response_[i] == '\n'){
+                        response_[i] = '\r';
+                        response_[i+1] = '\n';
+                        break;
+                    }
+                }
+                send(newsockfd, response_, strlen(response_), 0);
+                
+                memset(response_, '\0', 1000);
+                strcat(response_, "Cache-Control: no-store\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
-                strcat(response_, "Cache-Control: no-store\n");
-                send(newsockfd, response_, strlen(response_), 0);
-
-                memset(response_, '\0', 1000);
-                strcat(response_, "Content-language: en-us\n");
+                strcat(response_, "Content-language: en-us\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
@@ -178,19 +187,19 @@ int main()
                 char len_str[20];
                 sprintf(len_str, "%ld", fl);
                 strcat(response_, len_str);
-                strcat(response_, "\n");
+                strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
-                strcat(response_, "Content-type: pdf\n");
+                strcat(response_, "Content-type: pdf\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
-                strcat(response_, "Last modified: \n");
+                strcat(response_, "Last modified: \r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
-                strcat(response_, "\n");
+                strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
                 memset(response_, '\0', 1000);
