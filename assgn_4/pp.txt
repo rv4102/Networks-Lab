@@ -1,0 +1,140 @@
+Server running
+GET /A4.pdf HTTP/1.1
+Host:localhost:8000
+User-Agent:Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0
+Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept:pdf
+Accept-Language:en-US,en;q=0.5
+Connection:close
+
+
+Received:
+GET /A4.pdf HTTP/1.1
+Host:localhost:8000
+User-Agent:Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0
+Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept:pdf
+Accept-Language:en-US,en;q=0.5
+Connection:close
+
+
+Remainder: 
+Command: GET
+path: /A4.pdf
+http_version: HTTP/1.1
+host_name: localhost
+time_string: Thu Feb 16 23:51:57 2023
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 1000
+n: 598

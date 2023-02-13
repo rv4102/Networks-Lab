@@ -1,11 +1,8 @@
 /*
 			NETWORK PROGRAMMING WITH SOCKETS
-
 In this program we illustrate the use of Berkeley sockets for interprocess
 communication across the network. We show the communication between a server
 process and a client process.
-
-
 */
 
 #include <stdio.h>
@@ -20,58 +17,29 @@ process and a client process.
 #include <time.h>
 #include <fcntl.h>
 
-void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size){
+			/* THE SERVER PROCESS */
 
-    if(rem_string_size){
-        fwrite(rem_string, 1, rem_string_size, fd);
-    }
-    int curr_size = rem_string_size;
-	printf("tot_size: %d\n", tot_size);
-	printf("curr_size: %d\n", curr_size);
-    char buffer[101];
-    while(1){
-        for(int i = 0;i<101;i++) buffer[i] = '\0';
-        int bytes_received = recv(sockfd, buffer, 100, 0);
-		if(bytes_received<0){
-			perror("recv");
-			exit(1);
+int recv_msg(char *buf, int sockfd, int n){
+    // for(int i=0; i < 10000; i++) buf[i] = '\0';
+    memset(buf, '\0', n);
+
+	int k = 0;
+	while(1){
+		char buffer[n];
+		for(int i = 0;i<n;i++) buffer[i] = '\0';
+		int nn = recv(sockfd, buffer, n, 0);
+		int end = 0;
+		for(int i = 0;i<nn;i++){
+			if(buffer[i]=='\0'){
+				end = 1; break;
+			}
+            if(k && k%n==0) buf = (char *)realloc(buf, (k/n + 1)*n);
+			buf[k++] = buffer[i];
 		}
-        curr_size += bytes_received;
-		printf("bytes: %d %d\n", bytes_received, curr_size);
-        fwrite(buffer, 1, bytes_received, fd);
-        if(curr_size >= tot_size) break;
-    }
-    
-}
+		if(end) break;
+	}
+    return k;
 
-int msg_rcv(char buf[], int sockfd, int buf_size, char rem_string[]){
-    char *body_start  = NULL;
-    int k = 0;
-    int end = 0;
-	int start = 0;
-    char buffer[101];
-	int a = 0;
-    while(1){
-        for(int i = 0;i<101;i++) buffer[i] = '\0';
-        int bytes_received = recv(sockfd, buffer, 100, 0);
-		a += bytes_received;
-		// printf("bytes: %d\n", bytes_received);
-        for(int i = 0;i<bytes_received;i++){
-            if(body_start){
-                rem_string[start++] = buffer[i];
-                continue;
-            }
-            buf[k++] = buffer[i];
-            body_start = strstr(buf, "\r\n\r\n");
-            if(body_start!=NULL){
-                end = 1;
-                // break;
-            }
-        }
-        if(end) break;
-    }
-	printf("a: %d\n", a);
-	return start;
 }
 
 int main()
@@ -90,7 +58,7 @@ int main()
 
 	serv_addr.sin_family		= AF_INET;
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
-	serv_addr.sin_port		= htons(8080);
+	serv_addr.sin_port		= htons(8000);
 
 	if (bind(sockfd, (struct sockaddr *) &serv_addr,
 					sizeof(serv_addr)) < 0) {
@@ -129,12 +97,12 @@ int main()
 					   the new socket.
 					*/
 
-			char buffer[5000], rem_string[5000];
-            
-            int rem_string_size = msg_rcv(buffer, newsockfd, 10, rem_string);
-
+			char *buffer;
+            buffer = (char *)malloc(10);
+            int n = recv_msg(buffer, newsockfd, 10);
             char *dup = strdup(buffer);
             
+            // char new_time[100];
             time_t current_time = time(NULL);
             struct tm *time_struct = localtime(&current_time);
             struct tm *current_times = time_struct;
@@ -170,7 +138,7 @@ int main()
                 printf("host_name: %s\n", host_name);
 
                 FILE *file = fopen(path+1, "r");
-
+                int file_fd  = open(path+1, O_RDONLY);
                 char response_[1000];
                
                 if(file == NULL){
@@ -183,7 +151,7 @@ int main()
                     close(newsockfd);
                     exit(0);
                 }
-
+                
                 memset(response_, '\0', 1000);
                 strcat(response_, "HTTP/1.1 200 OK\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
@@ -232,21 +200,16 @@ int main()
                 strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
 
-                fclose(file);
                 memset(response_, '\0', 1000);
 
-                FILE* file_fd  = fopen(path+1, "rb");
                 int b;
-                int tot = 0;
-                while((b = fread(response_,1,1000,file_fd))>0){
-                    int n = send(newsockfd, response_, b, 0);
-                    tot += n;
-                    printf("n: %d\n", n);
-                    memset(response_, '\0', 1000);
-
+                while((b = read(file_fd, response_, 1000))>0){
+                    send(newsockfd, response_, b, 0);
                 }
-                printf("tot: %d\n", tot);
-                fclose(file_fd);
+                memset(response_, '\0', 1000);
+                
+                fclose(file);
+                close(file_fd);
 
             }else if(strcmp(token, "PUT")==0){
 
@@ -327,11 +290,8 @@ int main()
 			close(newsockfd);
 			exit(0);
 		}
-        
-    }
-    close(sockfd);
-	
+
+		close(newsockfd);
+	}
 	return 0;
 }
-			
-
