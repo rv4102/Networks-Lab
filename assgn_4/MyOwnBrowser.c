@@ -28,33 +28,9 @@ void send_as_packet(char* message, int sockfd){
         // send this packet to the server
         if(send(sockfd, packet, BUFSIZE, 0) < 0){
             perror("send() error.\n");
-            exit(-1);
+            exit(1);
         }
     }
-}
-
-// receive data in packets and return the length of received data
-size_t receive_as_packet(char *command, int sockfd){
-    size_t end=0, i, ptr=0;
-    char packet[BUFSIZE];
-    while(!end){
-        if( recv(sockfd, packet, BUFSIZE, 0) < 0 ){
-            perror("recv() error.\n");
-            exit(-1);
-        }
-
-        // check if this is the last packet
-        for(i=0; i<BUFSIZE; i++){
-            if(packet[i]=='\0') end=1;
-        }
-
-        // concatenate this to the final expression
-        for(i=0; i<BUFSIZE; i++){
-            command[ptr++] = packet[i];
-        }
-    }
-
-    return strlen(command);
 }
 
 void split_command(char *msg, size_t len, char **split){
@@ -76,7 +52,7 @@ void split_command(char *msg, size_t len, char **split){
     }
 }
 
-void parse_ip(char *url, char *ip, char *port){
+void parse_addr(char *url, char *ip, char *port, char *fname){
     size_t ptr=7, idx=0; // "http://" uses 7 characters
     while(isdigit(url[ptr]) || url[ptr] == '.'){
         ip[idx++] = url[ptr];
@@ -92,8 +68,11 @@ void parse_ip(char *url, char *ip, char *port){
     
     while( isdigit(url[ptr]) ) ptr--;
     ptr++;
-
     strcpy(port, url+ptr);
+
+    while( url[ptr] != '/') ptr--;
+    ptr++;
+    strcpy(fname, url+ptr);    
 }
 
 void get_content_type(char *url, char *type){
@@ -143,13 +122,55 @@ void get_times(char *last_modified, char *current){
     last_modified[strlen(last_modified)-1] = '\0';
 }
 
-void frame_request(char **cmd_list, char *time, char *accept_lang, char *ip, char *port,
-        char *modified_since, char *content_language, char *content_length, char *http_request) {
-    size_t ptr_1=0, ptr_2=0;
+int check_header(char *header, char *command){
+    char ver[20], status[10], response[10], *tok;
+ 
+    tok = strtok(header, " ");
+    strcpy(ver, tok);
+    tok = strtok(NULL, " ");
+    strcpy(status, " ");
+    tok = strtok(NULL, "\r");
+    strcpy(response, tok);
 
-    char type[20];
-    // the type of content can be inferred from
-    get_content_type(cmd_list[1], type);
+    if( strcmp(command, "GET")==0 ){
+        if( strcmp(status, "200")==0 ){
+            printf("Request successful. File is being received.\n");
+            return 1;
+        }
+        else if( strcmp(status, "400")==0 ){
+            printf("Bad Request.\n");
+        }
+        else if( strcmp(status, "403")==0 ){
+            printf("Forbidden.\n");
+        }
+        else if( strcmp(status, "404")==0 ){
+            printf("File Not Found on server.\n");
+        }
+    }
+    else( strcmp(command, "PUT")==0 ){
+        if( strcmp(status, "200")==0 ){
+            printf("Request successful. File is being sent.\n");
+            return 1;
+        }
+        else if( strcmp(status, "400")==0 ){
+            printf("Bad Request.\n");
+        }
+        else if( strcmp(status, "403")==0 ){
+            printf("Forbidden.\n");
+        }
+    }
+
+    return 0;
+}
+
+void frame_request(char **cmd_list, char *filetype, char *accept_lang, char *ip, char *port,
+    char *content_language, char *content_length, char *http_request) {
+
+    size_t ptr_1=0, ptr_2=0;
+    char type[20], current_time[40], last_modified_time[40];
+
+    get_times(last_modified_time, current_time);
+
     http_request[0]='\0';
     strcat(http_request, cmd_list[0]);
     // strcpy(http_request, cmd_list[0]);
@@ -174,16 +195,16 @@ void frame_request(char **cmd_list, char *time, char *accept_lang, char *ip, cha
 
     strcat(http_request, "Connection: close\r\n");
     strcat(http_request, "Date: ");
-    strcat(http_request, time);
+    strcat(http_request, current_time);
     strcat(http_request, "\r\n");
     strcat(http_request, "Accept: ");
-    strcat(http_request, type);
+    strcat(http_request, filetype);
     strcat(http_request, "\r\n");
     strcat(http_request, "Accept-Language: ");
     strcat(http_request, accept_lang);
     strcat(http_request, "\r\n");
     strcat(http_request, "If-Modified-Since: ");
-    strcat(http_request, modified_since);
+    strcat(http_request, last_modified_time);
     strcat(http_request, "\r\n");
     strcat(http_request, "Content-language: ");
     strcat(http_request, content_language);
@@ -192,21 +213,83 @@ void frame_request(char **cmd_list, char *time, char *accept_lang, char *ip, cha
     strcat(http_request, content_length);
     strcat(http_request, "\r\n");
     strcat(http_request, "Content-type: ");
-    strcat(http_request, type);
+    strcat(http_request, filetype);
     strcat(http_request, "\r\n");
 
     return;
 }
 
-void parse_response(){
+// receive data in packets and return the length of received data
+void recv_and_parse(char *command, char *fname, int sockfd){
+    size_t end=0, i, j, h_fixed_ptr=0, statusOK=0;
+    char packet[BUFSIZE];
+    int gettingHeader=1;
+    char version[20], code[5], response[5], header[1024], data[256], *tok;
 
+    FILE *fp;
+    fp = fopen(fname, "w");
+
+    // add polling here
+
+    while(!end){
+        if( recv(sockfd, packet, BUFSIZE, 0) < 0 ){
+            perror("recv() error.\n");
+            exit(1);
+        }
+
+        // check if this is the last packet
+        for(i=0; i<BUFSIZE; i++){
+            if(packet[i]=='\0') end=1;
+        }
+
+        // if we are receiving the header currently
+        if(gettingHeader){
+            strcat(header, packet);
+            for(i=h_fixed_ptr; i<strlen(header); i++){
+                if( i<strlen(header)-3 && header[i]=='\r' && header[i+1]=='\n' && header[i+2]=='\r' && header[i+3]=='\n' ){
+                    // we have characters after "\r\n\r\n"
+                    i += 3;
+                    header[i] = '\0';
+                    printf("The header received is:\n%s\n", header);
+
+                    // any content after the header is concatenated to body
+                    if( i+1<strlen(header) ) strcat(data, header+i+1);
+                    // change the flag
+                    gettingHeader = 0;
+                }
+            }
+            h_fixed_ptr=i; // can remove this pointer
+        }
+        // we are getting the body of the message
+        else{
+            if( data[0] != '\0' ){
+                fprintf(fp, "%s", data);
+                bzero(data, 256); // empty the data
+                continue;
+            }
+            // check status of the header
+            if( !statusOK && !check_header(header, command) )
+                break;
+            else
+                statusOK = 1;
+            
+            fprintf(fp, "%s", packet);
+            bzero(packet, BUFSIZE);
+        }
+    }
+
+    if( fclose(fp)!=0 ){
+        perror("Unable to close file stream.\n");
+        exit(1);
+    }
 }
 
 int main(){
     int sockfd, port_;
     struct sockaddr_in serv_addr;
     size_t n=0;
-    char *msg, **cmd_list, ip[16], port[6], http_request[4096], current_time[40], last_modified_time[40];
+    char *msg, **cmd_list, ip[16], port[6], http_request[4096], http_response[8192], header[4096], filename[100], type[20];
+
     msg = (char *)malloc(MAXRETSIZE * sizeof(char));
     cmd_list = (char **)malloc(sizeof(char *) * 3);
     for(int i=0; i<3; i++){
@@ -219,13 +302,12 @@ int main(){
 	}
 
     while(1){
-        port_=80;
         printf("MyOwnBrowser> ");
         getline(&msg, &n, stdin);
         split_command(msg, strlen(msg), cmd_list);
         if( strcmp(cmd_list[0], "GET") == 0 ){
-            // parse the IP address
-            parse_ip(cmd_list[1], ip, port);
+            // parse the address
+            parse_addr(cmd_list[1], ip, port, filename);
             sscanf(port, "%d", &port_);
 
             // connect to the server
@@ -238,13 +320,44 @@ int main(){
                 exit(1);
             }
 
+            // the type of content can be inferred from
+            get_content_type(cmd_list[1], type);
             // create an http request
-            get_times(last_modified_time, current_time);
-            frame_request(cmd_list, current_time, "en-us", ip, port, last_modified_time, "en-us", "\0", http_request);
+            frame_request(cmd_list, type, "en-us", ip, port, "en-us", "\0", http_request);
+
+            printf("Request sent:\n\n%s\n\n", http_request);
 
             // send this as packets
-            
+            send_as_packet(http_request, sockfd);
 
+            // parse and receive the response
+            recv_and_parse(cmd_list[0], filename, sockfd);
+
+            // open the saved file inside an appropriate application 
+            char *argv[256];
+            for(int i=0; i<256; i++){
+                argv[i] = (char *)malloc(sizeof(char));
+            }
+            strcpy(argv[0], "open");
+            strcpy(argv[1], "-a");
+
+            if( strcmp(type, "application/pdf")==0 || strcmp(type, "image/jpg")==0)
+                strcpy(argv[2], "Preview");
+            else if( strcmp(type, "text/*")==0 )
+                strcpy(argv[2], "TextEdit");
+            else if( strcmp(type, "text/html")==0 )
+                strcpy(argv[2], "Firefox");
+
+            strcpy(argv[3], filename);
+            argv[4] = 0;
+            
+            pid_t pid = fork();
+            if( pid == 0 ){ // open child process
+                execvp(argv[0], argv);
+            }
+            else{
+                waitpid(-1, NULL, 0);
+            }
         }
         else if( strcmp(cmd_list[0], "PUT") == 0 ){
 
