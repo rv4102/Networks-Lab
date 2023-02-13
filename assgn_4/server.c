@@ -44,7 +44,7 @@ void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_s
     
 }
 
-int msg_rcv(char buf[], int sockfd, int buf_size, char rem_string[]){
+int msg_rcv(char buf[], int sockfd, char rem_string[]){
     char *body_start  = NULL;
     int k = 0;
     int end = 0;
@@ -70,7 +70,7 @@ int msg_rcv(char buf[], int sockfd, int buf_size, char rem_string[]){
         }
         if(end) break;
     }
-	printf("a: %d\n", a);
+	// printf("a: %d\n", a);
 	return start;
 }
 
@@ -90,7 +90,7 @@ int main()
 
 	serv_addr.sin_family		= AF_INET;
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
-	serv_addr.sin_port		= htons(8080);
+	serv_addr.sin_port		= htons(8000);
 
 	if (bind(sockfd, (struct sockaddr *) &serv_addr,
 					sizeof(serv_addr)) < 0) {
@@ -113,6 +113,8 @@ int main()
 		clilen = sizeof(cli_addr);
 		newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
 					&clilen) ;
+        
+        printf("Accept successful\n%d\n", newsockfd);
 
 		if (newsockfd < 0) {
 			printf("Accept error\n");
@@ -131,8 +133,7 @@ int main()
 
 			char buffer[5000], rem_string[5000];
             
-            int rem_string_size = msg_rcv(buffer, newsockfd, 10, rem_string);
-
+            int rem_string_size = msg_rcv(buffer, newsockfd, rem_string);
             char *dup = strdup(buffer);
             
             time_t current_time = time(NULL);
