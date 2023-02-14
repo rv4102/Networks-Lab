@@ -8,9 +8,11 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <time.h>
+#include <fcntl.h>
 
-#define BUFSIZE 50
-#define MAXRETSIZE 30045 // large sized buffer to accomodate dir command output
+#define BUFSIZE 200
+#define MAXRETSIZE 1000
+#define MAXFILENAMELEN 200
 
 void send_as_packet(char* message, int sockfd){
     size_t i, j, len=strlen(message);
@@ -52,40 +54,73 @@ void split_command(char *msg, size_t len, char **split){
     }
 }
 
-void parse_addr(char *url, char *ip, char *port, char *fname){
-    size_t ptr=7, idx=0; // "http://" uses 7 characters
-    while(isdigit(url[ptr]) || url[ptr] == '.'){
-        ip[idx++] = url[ptr];
-        ptr++;
-    }
-    ip[idx] = '\0';
+void parse_addr(char *url, char *ip, char *port, char *fname, char *path, char *command){ 
+    char url_copy[MAXRETSIZE];
+    memset(url_copy, '\0', MAXRETSIZE);
+    strcpy(url_copy, url);
 
-    ptr=strlen(url)-1;
-    if( !isdigit(url[ptr]) ){
-        strcpy(port, "80");
-        return;
-    }
+    if( strcmp(command, "GET")==0 ){
+        char *tok = strtok(url_copy, "/"); // tok == "http:"
+        // printf("%s\n", tok);
+        tok = strtok(NULL, "/"); // tok == ip
+        // printf("%s\n", tok);
+        strcpy(ip, tok);
+        tok = strtok(NULL, "\0");
     
-    while( isdigit(url[ptr]) ) ptr--;
-    ptr++;
-    strcpy(port, url+ptr);
-
-    while( url[ptr] != '/') ptr--;
-    ptr++;
-
-    size_t ptr1=0;
-    while(url[ptr] != ':'){
-        fname[ptr1++] = url[ptr];
+        int ptr=strlen(tok)-1;
+        while(ptr >= 0 && tok[ptr] != ':') ptr--;
         ptr++;
-    }   
+        if(ptr != 0){
+            strcpy(port, tok+ptr);
+        }
+        else{
+            strcpy(port, "80");
+        }
+
+        ptr=strlen(tok)-1;
+        while(ptr >= 0 && tok[ptr] != '/') ptr--;
+        ptr++;
+
+        int i=0;
+        while(ptr<strlen(tok) && tok[ptr] != ':'){
+            fname[i++] = tok[ptr];
+            ptr++;
+        }
+    }
+    else if( strcmp(command, "PUT") ){
+        char *tok = strtok(url_copy, "/"); // tok == "http:"
+        // printf("%s\n", tok);
+        tok = strtok(NULL, "/"); // tok == ip
+        // printf("%s\n", tok);
+        strcpy(ip, tok);
+        tok = strtok(NULL, "\0");
+
+        int ptr=strlen(tok)-1;
+        while(ptr >= 0 && tok[ptr] != ':') ptr--;
+        ptr++;
+        if(ptr != 0){
+            strcpy(port, tok+ptr);
+        }
+        else{
+            strcpy(port, "80");
+        }
+
+        strcpy(path, "/");
+        strcat(path, tok);
+    }
 }
 
 void get_content_type(char *url, char *type){
+    char url_copy[MAXRETSIZE];
+    strcpy(url_copy, url);
     char *tok;
-    tok = strtok(url, ":"); // the first token has "http"
+    tok = strtok(url_copy, ":"); // the first token has "http"
     tok = strtok(NULL, ":"); // the second token has "//ip/path/to/file.xyz"
 
-    strcpy(tok, tok + strlen(tok)-3);
+    int ptr=strlen(tok);
+    while(tok[ptr] != '.') ptr--;
+    ptr++;
+    strcpy(tok, tok+ptr);
 
     if( strcmp(tok, "html") == 0 ){
         strcpy(type, "text/html");
@@ -127,13 +162,141 @@ void get_times(char *last_modified, char *current){
     last_modified[strlen(last_modified)-1] = '\0';
 }
 
-int check_header(char *header, char *command){
-    char ver[20], status[10], response[10], *tok;
- 
-    tok = strtok(header, " ");
+void frame_request_get(char **cmd_list, char *filetype, char *accept_lang, char *ip, char *port,
+    char *content_language, char *content_length, char *http_request) {
+
+    size_t ptr_1=0, ptr_2=0;
+    char current_time[40], last_modified_time[40];
+
+    get_times(last_modified_time, current_time);
+
+    strcpy(http_request, cmd_list[0]);
+    strcat(http_request, " ");
+
+    // get the url
+    ptr_1 = 7;
+    while(cmd_list[1][ptr_1] != '/') ptr_1++;
+    ptr_2 = strlen(http_request);
+    while(cmd_list[1][ptr_1] != ':' && cmd_list[1][ptr_1] != '\0') {
+        http_request[ptr_2++] = cmd_list[1][ptr_1];
+        ptr_1++;
+    }
+    http_request[ptr_2] = '\0';
+
+    strcat(http_request, " HTTP/1.1\r\n");
+    strcat(http_request, "Host: ");
+    strcat(http_request, ip);
+    strcat(http_request, ":");
+    strcat(http_request, port);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Connection: close\r\n");
+    strcat(http_request, "Date: ");
+    strcat(http_request, current_time);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Accept: ");
+    strcat(http_request, filetype);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Accept-Language: ");
+    strcat(http_request, accept_lang);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Content-type: ");
+    strcat(http_request, filetype);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "\r\n");
+
+    return;
+}
+
+void frame_request_put(char **cmd_list, char *ip, char *port, char *path, 
+                char *fname, FILE *fp, char *filetype, char *http_request){
+    char current_time[40], last_modified_time[40];
+
+    get_times(last_modified_time, current_time);
+
+    if(path[strlen(path)-1] != '/') 
+        strcat(path, "/");
+
+    strcpy(http_request, cmd_list[0]);
+    strcat(http_request, " ");
+    strcat(http_request, path);
+    strcat(http_request, fname);
+    strcat(http_request, " HTTP/1.1\r\n");
+    strcat(http_request, "Host: ");
+    strcat(http_request, ip);
+    strcat(http_request, ":");
+    strcat(http_request, port);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Connection: close\r\n");
+    strcat(http_request, "Date: ");
+    strcat(http_request, current_time);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "If-Modified-Since: ");
+    strcat(http_request, last_modified_time);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "Content-language: ");
+    strcat(http_request, "en-us");
+    strcat(http_request, "\r\n");
+
+    fseek(fp, 0, SEEK_END);
+    long fl = ftell(fp);
+    char content_length[20];
+    sprintf(content_length, "%ld", fl);
+    fseek(fp, 0, SEEK_SET);
+    strcat(http_request, "Content-length: ");
+    strcat(http_request, content_length);
+    strcat(http_request, "\r\n");
+
+    strcat(http_request, "Content-type: ");
+    strcat(http_request, filetype);
+    strcat(http_request, "\r\n");
+    strcat(http_request, "\r\n");
+
+    return;
+}
+
+int check_and_parse_header(char *header, char *command, char *fileSize){
+    printf("Response received:\n%s\n", header);
+    char header_copy[MAXRETSIZE], firstLine[BUFSIZE];
+    strcpy(header_copy, header);
+    char ver[20], status[10], response[10];
+
+    char *tok = strtok(header_copy, "\n");
+    strcpy(firstLine, tok);
+    int i=0;
+    while(1){
+        tok = strtok(NULL, "\n");
+        if(strcmp(tok, "\r")==0) 
+            break;
+
+        char header_name[BUFSIZE];
+        memset(header_name, '\0', BUFSIZE);
+        i=0;
+        while(1){
+            if(tok[i] == ':'){
+                strncpy(header_name, tok, i);
+                break;
+            }
+            i++;
+        }
+
+        if( strcmp(header_name, "Content-length")==0 || strcmp(header_name, "Content-Length")==0 ){
+            i++;
+            while( tok[i]==' ' ) i++;
+            int j = 0;
+            while( tok[i]!='\r' ){
+                fileSize[j++] = tok[i];
+                i++;
+            }
+        }
+    }
+    
+    memset(ver, '\0', 20);
+    memset(status, '\0', 10);
+    memset(response, '\0', 10);
+    tok = strtok(firstLine, " ");
     strcpy(ver, tok);
     tok = strtok(NULL, " ");
-    strcpy(status, " ");
+    strcpy(status, tok);
     tok = strtok(NULL, "\r");
     strcpy(response, tok);
 
@@ -168,163 +331,76 @@ int check_header(char *header, char *command){
     return 0;
 }
 
-void frame_request(char **cmd_list, char *filetype, char *accept_lang, char *ip, char *port,
-    char *content_language, char *content_length, char *http_request) {
-
-    size_t ptr_1=0, ptr_2=0;
-    char current_time[40], last_modified_time[40];
-
-    get_times(last_modified_time, current_time);
-
-    strcpy(http_request, cmd_list[0]);
-    strcat(http_request, " ");
-
-    // get the url
-    ptr_1 = 7;
-    while(cmd_list[1][ptr_1] != '/') ptr_1++;
-    ptr_2 = strlen(http_request);
-    while(cmd_list[1][ptr_1] != ':' && cmd_list[1][ptr_1] != '\0') {
-        http_request[ptr_2++] = cmd_list[1][ptr_1];
-        ptr_1++;
+void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size){
+    if(rem_string_size){
+        fwrite(rem_string, 1, rem_string_size, fd);
     }
-    http_request[ptr_2] = '\0';
-
-    strcat(http_request, " HTTP/1.1\r\n");
-    strcat(http_request, "Host: ");
-    strcat(http_request, ip);
-    strcat(http_request, ": ");
-    strcat(http_request, port);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Connection: close\r\n");
-    strcat(http_request, "Date: ");
-    strcat(http_request, current_time);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Accept: ");
-    strcat(http_request, filetype);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Accept-Language: ");
-    strcat(http_request, accept_lang);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "If-Modified-Since: ");
-    strcat(http_request, last_modified_time);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Content-language: ");
-    strcat(http_request, content_language);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Content-length: ");
-    strcat(http_request, content_length);
-    strcat(http_request, "\r\n");
-    strcat(http_request, "Content-type: ");
-    strcat(http_request, filetype);
-    strcat(http_request, "\r\n");
-
-    return;
-}
-
-int recv_msg(char *buf, int sockfd, int n){
-    // for(int i=0; i < 10000; i++) buf[i] = '\0';
-    memset(buf, '\0', n);
-
-	int k = 0;
-	while(1){
-		char buffer[n];
-		for(int i = 0;i<n;i++) buffer[i] = '\0';
-		int nn = recv(sockfd, buffer, n, 0);
-        printf("%s", buffer);
-		int end = 0;
-		for(int i = 0;i<nn;i++){
-			if(buffer[i]=='\0'){
-				end = 1; break;
-			}
-            if(k && k%n==0) buf = (char *)realloc(buf, (k/n + 1)*n);
-			buf[k++] = buffer[i];
+    int curr_size = rem_string_size;
+	// printf("tot_size: %d\n", tot_size);
+	// printf("curr_size: %d\n", curr_size);
+    char buffer[101];
+    while(1){
+        for(int i = 0;i<101;i++) buffer[i] = '\0';
+        int bytes_received = recv(sockfd, buffer, 100, 0);
+		if(bytes_received<0){
+			perror("recv");
+			exit(1);
 		}
-		if(end) break;
-	}
-    return k;
-
+        curr_size += bytes_received;
+		printf("bytes: %d %d\n", bytes_received, curr_size);
+        fwrite(buffer, 1, bytes_received, fd);
+        if(curr_size >= tot_size) break;
+    }
 }
 
-// receive data in packets and return the length of received data
-void recv_and_parse(char *command, char *fname, int sockfd){
-    size_t end=0, i, j, h_fixed_ptr=0, statusOK=0;
-    char packet[BUFSIZE];
-    int gettingHeader=1;
-    char version[20], code[5], response[5], header[4096]="\0", data[256];
-
-    FILE *fp;
-    fp = fopen(fname, "w");
-
-    // add polling here
-
-    while(!end){
-        if( recv(sockfd, packet, BUFSIZE, 0) < 0 ){
-            perror("recv() error.\n");
-            exit(1);
-        }
-
-        printf("%s\n", packet);
-
-        // check if this is the last packet
-        for(i=0; i<BUFSIZE; i++){
-            if(packet[i]=='\0') end=1;
-        }
-
-        // if we are receiving the header currently
-        if(gettingHeader){
-            strcat(header, packet);
-            for(i=h_fixed_ptr; i<strlen(header); i++){
-                if( i<strlen(header)-3 && header[i]=='\r' && header[i+1]=='\n' && header[i+2]=='\r' && header[i+3]=='\n' ){
-                    // we have characters after "\r\n\r\n"
-                    i += 3;
-                    header[i] = '\0';
-                    // printf("The header received is:\n%s\n", header);
-
-                    // any content after the header is concatenated to body
-                    if( i+1<strlen(header) ) strcat(data, header+i+1);
-                    // change the flag
-                    gettingHeader = 0;
-                }
-            }
-            h_fixed_ptr=i; // can remove this pointer
-        }
-        // we are getting the body of the message
-        else{
-            if( data[0] != '\0' ){
-                // fprintf(fp, "%s", data);
-                // printf("%s", data);
-                bzero(data, 256); // empty the data
+int msg_rcv(char buf[], int sockfd, char rem_string[]){
+    char *body_start  = NULL;
+    int k = 0;
+    int end = 0;
+	int start = 0;
+    char buffer[101];
+	int a = 0;
+    while(1){
+        for(int i = 0;i<101;i++) buffer[i] = '\0';
+        int bytes_received = recv(sockfd, buffer, 100, 0);
+		a += bytes_received;
+        for(int i = 0;i<bytes_received;i++){
+            if(body_start){
+                rem_string[start++] = buffer[i];
                 continue;
             }
-            // check status of the header
-            if( !statusOK && !check_header(header, command) )
-                break;
-            else
-                statusOK = 1;
-            
-            // fprintf(fp, "%s", packet);
-            // printf("%s", packet);
-            bzero(packet, BUFSIZE);
+            buf[k++] = buffer[i];
+            body_start = strstr(buf, "\r\n\r\n");
+            if(body_start!=NULL){
+                end = 1;
+                // break;
+            }
         }
+        if(end) break;
     }
-
-    if( fclose(fp)!=0 ){
-        perror("Unable to close file stream.\n");
-        exit(1);
-    }
+	return start;
 }
 
 int main(){
     int sockfd, port_;
     struct sockaddr_in serv_addr;
-    size_t n=0;
-    char *msg, **cmd_list, ip[16], port[6], http_request[4096], http_response[4096], header[4096], filename[100], type[20];
-
+    
+    char *msg, **cmd_list, *ip, *port, *http_request, *rem_str, *filename, *type, *header, *fileSize, *path;
     msg = (char *)malloc(MAXRETSIZE * sizeof(char));
     cmd_list = (char **)malloc(sizeof(char *) * 3);
     for(int i=0; i<3; i++){
-        cmd_list[i] = (char *)malloc(sizeof(char) * MAXRETSIZE);
+        cmd_list[i] = (char *)malloc(MAXRETSIZE * sizeof(char));
     }
+    ip = (char *)malloc(16 * sizeof(char));
+    port = (char *)malloc(6 * sizeof(char));
+    http_request = (char *)malloc(BUFSIZE * sizeof(char));
+    rem_str = (char *)malloc(BUFSIZE * sizeof(char));
+    filename = (char *)malloc(MAXFILENAMELEN * sizeof(char));
+    type = (char *)malloc(20 * sizeof(char));
+    header = (char *)malloc(MAXRETSIZE * sizeof(char));
+    fileSize = (char *)malloc(100 * sizeof(char));
+    path = (char *)malloc(BUFSIZE * sizeof(char));
+
 
     while(1){
         if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
@@ -333,12 +409,19 @@ int main(){
         }
 
         printf("MyOwnBrowser> ");
+
+        size_t n=0;
         getline(&msg, &n, stdin);
         split_command(msg, strlen(msg), cmd_list);
 
         if( strcmp(cmd_list[0], "GET") == 0 ){
             // parse the address
-            parse_addr(cmd_list[1], ip, port, filename);
+            memset(ip, '\0', 16);
+            memset(port, '\0', 6);
+            memset(filename, '\0', MAXFILENAMELEN);
+            memset(path, '\0', BUFSIZE);
+            parse_addr(cmd_list[1], ip, port, filename, path, cmd_list[0]);
+            printf("IP: %s\n", ip);
             sscanf(port, "%d", &port_);
 
             // connect to the server
@@ -351,51 +434,112 @@ int main(){
                 exit(1);
             }
 
-            // the type of content can be inferred from
+            // the type of content can be inferred
+            memset(type, '\0', 20);
             get_content_type(cmd_list[1], type);
-            // create an http request
-            frame_request(cmd_list, type, "en-us", ip, port, "en-us", "\0", http_request);
 
-            // printf("Request sent:\n\n%s\n\n", http_request);
+            // create an http request
+            memset(http_request, '\0', BUFSIZE);
+            frame_request_get(cmd_list, type, "en-us", ip, port, "en-us", "\0", http_request);
+
+            printf("Request sent:\n%s\n\n", http_request);
 
             // send this as packets
             send_as_packet(http_request, sockfd);
 
-            // parse and receive the response
-            // recv_and_parse(cmd_list[0], filename, sockfd);
-            recv_msg(http_response, sockfd, 4096);
+            // get the header
+            memset(rem_str, '\0', BUFSIZE);
+            memset(header, '\0', MAXRETSIZE);
+            int rem_size = msg_rcv(header, sockfd, rem_str);
+
+            // get file size from header
+            memset(fileSize, '\0', 100);
+            int v = check_and_parse_header(header, cmd_list[0], fileSize);
+            printf("%s\n", filename);
+            if(v != 0){
+                // open the file to be written to
+                FILE* fd = fopen(filename, "wb");
+                // get the data
+                int fileSize_;
+                sscanf(fileSize, "%d", &fileSize_);
+                // printf("Content-length : %d\n", fileSize_);
+                // printf("Remaining string size: %d\n", rem_size);
+                input_body(fd, sockfd, rem_str, fileSize_, rem_size);
+
+                // open the saved file inside an appropriate application 
+                char *argv[256];
+                for(int i=0; i<256; i++){
+                    argv[i] = (char *)malloc(sizeof(char));
+                }
+                strcpy(argv[0], "open");
+                strcpy(argv[1], "-a");
+
+                if( strcmp(type, "application/pdf")==0 || strcmp(type, "image/jpg")==0)
+                    strcpy(argv[2], "Preview");
+                else if( strcmp(type, "text/*")==0 )
+                    strcpy(argv[2], "TextEdit");
+                else if( strcmp(type, "text/html")==0 )
+                    strcpy(argv[2], "Firefox");
+
+                strcpy(argv[3], filename);
+                argv[4] = 0;
+                
+                pid_t pid = fork();
+                if( pid == 0 ){ // open child process
+                    execvp(argv[0], argv);
+                }
+                else{
+                    waitpid(-1, NULL, 0);
+                }
+
+                fclose(fd);
+            }
 
             // close connection to the server
             close(sockfd);
-
-            // open the saved file inside an appropriate application 
-            char *argv[256];
-            for(int i=0; i<256; i++){
-                argv[i] = (char *)malloc(sizeof(char));
-            }
-            strcpy(argv[0], "open");
-            strcpy(argv[1], "-a");
-
-            if( strcmp(type, "application/pdf")==0 || strcmp(type, "image/jpg")==0)
-                strcpy(argv[2], "Preview");
-            else if( strcmp(type, "text/*")==0 )
-                strcpy(argv[2], "TextEdit");
-            else if( strcmp(type, "text/html")==0 )
-                strcpy(argv[2], "Firefox");
-
-            strcpy(argv[3], filename);
-            argv[4] = 0;
-            
-            pid_t pid = fork();
-            if( pid == 0 ){ // open child process
-                execvp(argv[0], argv);
-            }
-            else{
-                waitpid(-1, NULL, 0);
-            }
         }
         else if( strcmp(cmd_list[0], "PUT") == 0 ){
+            memset(ip, '\0', 16);
+            memset(port, '\0', 6);
+            memset(filename, '\0', MAXFILENAMELEN);
+            memset(path, '\0', BUFSIZE);
+            parse_addr(cmd_list[1], ip, port, filename, path, cmd_list[0]);
 
+            // connect to the server
+            serv_addr.sin_family = AF_INET;
+            inet_aton(ip, &serv_addr.sin_addr);
+            serv_addr.sin_port = htons(port_);
+
+            if( connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0 ){
+                perror("connect() failed.\n");
+                exit(1);
+            }
+
+            // the type of content can be inferred
+            memset(type, '\0', 20);
+            get_content_type(cmd_list[1], type);
+
+            memset(http_request, '\0', BUFSIZE);
+            FILE *fp = fopen(filename, "rb");
+            frame_request_put(cmd_list, ip, port, path, filename, fp, type, http_request);
+
+            send_as_packet(http_request, sockfd);
+
+            // now we send the file itself
+            int b;
+            char buffer[MAXRETSIZE];
+            memset(buffer, '\0', MAXRETSIZE);
+            while( (b = fread(buffer, 1, MAXRETSIZE, fp)) > 0 ){
+                send(sockfd, buffer, b, 0);
+                memset(buffer, '\0', MAXRETSIZE);
+            }
+            fclose(fp);
+            
+            char response[5000];
+            memset(response, '\0', 5000);
+            memset(rem_str, '\0', BUFSIZE);
+            msg_rcv(response, sockfd, rem_str);
+            printf("Response received:\n%s\n\n", response);
         }
         else if( strcmp(cmd_list[0], "QUIT") == 0 ){
             printf("Quitting now.\nBye.\n");
