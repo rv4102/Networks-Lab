@@ -1,13 +1,3 @@
-/*
-			NETWORK PROGRAMMING WITH SOCKETS
-
-In this program we illustrate the use of Berkeley sockets for interprocess
-communication across the network. We show the communication between a server
-process and a client process.
-
-
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -18,16 +8,15 @@ process and a client process.
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
-#include <fcntl.h>
 
+// function to get the request body and write it to a file
 void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size){
 
     if(rem_string_size){
         fwrite(rem_string, 1, rem_string_size, fd);
     }
     int curr_size = rem_string_size;
-	printf("tot_size: %d\n", tot_size);
-	printf("curr_size: %d\n", curr_size);
+
     char buffer[101];
     while(1){
         for(int i = 0;i<101;i++) buffer[i] = '\0';
@@ -37,13 +26,13 @@ void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_s
 			exit(1);
 		}
         curr_size += bytes_received;
-		printf("bytes: %d %d\n", bytes_received, curr_size);
         fwrite(buffer, 1, bytes_received, fd);
         if(curr_size >= tot_size) break;
     }
     
 }
 
+// function to get the header message from the client
 int msg_rcv(char buf[], int sockfd, char rem_string[]){
     char *body_start  = NULL;
     int k = 0;
@@ -55,7 +44,7 @@ int msg_rcv(char buf[], int sockfd, char rem_string[]){
         for(int i = 0;i<101;i++) buffer[i] = '\0';
         int bytes_received = recv(sockfd, buffer, 100, 0);
 		a += bytes_received;
-		// printf("bytes: %d\n", bytes_received);
+
         for(int i = 0;i<bytes_received;i++){
             if(body_start){
                 rem_string[start++] = buffer[i];
@@ -65,12 +54,10 @@ int msg_rcv(char buf[], int sockfd, char rem_string[]){
             body_start = strstr(buf, "\r\n\r\n");
             if(body_start!=NULL){
                 end = 1;
-                // break;
             }
         }
         if(end) break;
     }
-	// printf("a: %d\n", a);
 	return start;
 }
 
@@ -81,17 +68,19 @@ int main()
 	struct sockaddr_in	cli_addr, serv_addr;
 
 	int i;
-	// char buf[500000];		/* We will use this buffer for communication */
 
+    // create a socket
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
 		printf("Cannot create socket\n");
 		exit(0);
 	}
 
+    // bind the socket to an address
 	serv_addr.sin_family		= AF_INET;
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
-	serv_addr.sin_port		= htons(8000);
+	serv_addr.sin_port		= htons(8080);
 
+    // bind the socket to the address
 	if (bind(sockfd, (struct sockaddr *) &serv_addr,
 					sizeof(serv_addr)) < 0) {
 		printf("Unable to bind local address\n");
@@ -102,7 +91,7 @@ int main()
 	listen(sockfd, 5); 
 
 
-
+    // open the AccessLog file to write the logs
     FILE *file_log = fopen("AccessLog.txt", "a");
     if(file_log == NULL){
         printf("File not found\n");
@@ -111,87 +100,102 @@ int main()
 	while (1) {
 
 		clilen = sizeof(cli_addr);
+
+        // accept the connection from the client
 		newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
 					&clilen) ;
-        
-        printf("Accept successful\n%d\n", newsockfd);
 
 		if (newsockfd < 0) {
 			printf("Accept error\n");
 			exit(0);
 		}
 
+        // create a child process to handle the request
 		if (fork() == 0) {
 
-			/* This child process will now communicate with the
-			   client through the send() and recv() system calls.
-			*/
-			close(sockfd);	/* Close the old socket since all
-					   communications will be through
-					   the new socket.
-					*/
+            
+			close(sockfd);
 
+            // header message from the client will be stored in the buffer array
+            // remaing string corresponding to the request body will be stored in the rem_string array
 			char buffer[5000], rem_string[5000];
             
             int rem_string_size = msg_rcv(buffer, newsockfd, rem_string);
+
+            printf("Request:\n%s\n", buffer);
             char *dup = strdup(buffer);
             
             time_t current_time = time(NULL);
             struct tm *time_struct = localtime(&current_time);
-            struct tm *current_times = time_struct;
-            time_struct->tm_mday += 3;
-            time_t new_time = mktime(time_struct);
-            char *time_string = ctime(&new_time);
 
             char *token = strtok(buffer, " ");
 
-            printf("Command: %s\n", token);
-
             char client_ip[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &cli_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
-            fprintf(file_log, "%02d%02d%02d:%02d%02d%02d:%s:%d:",current_times->tm_mday-3, current_times->tm_mon+1, current_times->tm_year-100, current_times->tm_hour, current_times->tm_min, current_times->tm_sec, client_ip, ntohs(cli_addr.sin_port));
 
+            // write the log to the AccessLog file
+            fprintf(file_log, "%02d%02d%02d:%02d%02d%02d:%s:%d:",time_struct->tm_mday, time_struct->tm_mon+1, time_struct->tm_year-100, time_struct->tm_hour, time_struct->tm_min, time_struct->tm_sec, client_ip, ntohs(cli_addr.sin_port));
+
+            printf("Response:\n");
             if(strcmp(token, "GET")==0){
-                char *path  = strtok(NULL, " ");
-                printf("path: %s\n", path);
 
+                // get the path of the file to be sent
+                char *path  = strtok(NULL, " ");
+
+                // write the log to the AccessLog file
                 fprintf(file_log, "%s:%s\n", token, path);
                 char *http_version = strtok(NULL, "\n");
-                printf("http_version: %s\n", http_version);
                 if(strcmp(http_version, "HTTP/1.1\r")){
-                    printf("Invalid HTTP version\n");
+
+                    // send the 400 Bad Request response to the client if the HTTP version is not 1.1
+                    char response_[1000];
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "HTTP/1.1 400 Bad Request\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
                     close(newsockfd);
                     exit(0);
                 }
-
-                char *host = strtok(NULL, "\n");
-                char *host_name = strtok(host, ":");
-                host_name = strtok(NULL, ":");
-
-                printf("host_name: %s\n", host_name);
-
                 FILE *file = fopen(path+1, "r");
 
                 char response_[1000];
                
                 if(file == NULL){
-                    printf("File not found\n");
+
+                    // send the 404 Not Found response to the client if the file is not found
                     memset(response_, '\0', 1000);
                     strcat(response_, "HTTP/1.1 404 Not Found\r\n");
                     send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+
                     memset(response_, '\0', 1000);
-                    send(newsockfd, response_, strlen(response_)+1, 0);
+                    strcat(response_, "\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+
                     close(newsockfd);
                     exit(0);
                 }
 
+                // send the 200 OK response to the client
                 memset(response_, '\0', 1000);
                 strcat(response_, "HTTP/1.1 200 OK\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                // generating the response string and sending the response to the client as well as printing it
                 
+                time_t current_time = time(NULL);
+                struct tm *time_struct = localtime(&current_time);
+                time_struct->tm_mday  += 3;
+                time_t new_time = mktime(time_struct);
+                char *time_string = ctime(&new_time);
                 memset(response_, '\0', 1000);
                 strcat(response_, "Expires: ");
-                printf("time_string: %s", time_string);
                 strcat(response_, time_string);
 
                 for(int i = 0;;i++){
@@ -202,14 +206,20 @@ int main()
                     }
                 }
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
                 
+
                 memset(response_, '\0', 1000);
                 strcat(response_, "Cache-Control: no-store\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
 
                 memset(response_, '\0', 1000);
                 strcat(response_, "Content-language: en-us\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
 
                 memset(response_, '\0', 1000);
                 strcat(response_, "Content-length: ");
@@ -220,42 +230,62 @@ int main()
                 strcat(response_, len_str);
                 strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
 
+                char *dup_path = strdup(path);
                 memset(response_, '\0', 1000);
-                strcat(response_, "Content-type: pdf\r\n");
+                strcat(response_, "Content-type: ");
+                char *ext = strtok(dup_path, ".");
+                ext = strtok(NULL, ".");
+                strcat(response_, ext);
+                strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
 
                 memset(response_, '\0', 1000);
                 strcat(response_, "Last modified: \r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
 
                 memset(response_, '\0', 1000);
                 strcat(response_, "\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
 
                 fclose(file);
                 memset(response_, '\0', 1000);
 
+                // sending the file bit stream to the client
                 FILE* file_fd  = fopen(path+1, "rb");
                 int b;
-                int tot = 0;
                 while((b = fread(response_,1,1000,file_fd))>0){
                     int n = send(newsockfd, response_, b, 0);
-                    tot += n;
-                    printf("n: %d\n", n);
                     memset(response_, '\0', 1000);
-
                 }
-                printf("tot: %d\n", tot);
                 fclose(file_fd);
 
             }else if(strcmp(token, "PUT")==0){
 
+                // get the path of the file to be sent
                 char *path = strtok(NULL, " ");
-                printf("path: %s\n", path);
+
+                // write the log to the AccessLog file
+                fprintf(file_log, "%s:%s\n", token, path);
                 char *html_version = strtok(NULL, "\n");
                 if(strcmp(html_version, "HTTP/1.1\r")){
-                    printf("Invalid HTTP version\n");
+
+                    // send the 400 Bad Request response to the client if the HTTP version is not 1.1
+                    char response_[1000];
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "HTTP/1.1 400 Bad Request\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+
                     close(newsockfd);
                     exit(0);
                 }
@@ -274,8 +304,10 @@ int main()
                     }
                     i++;
                 }
-                printf("host_name: %s\n", host_name);
-                char *content_length, *content_type;
+                char content_length[100], content_type[100];
+
+                // getting the required headers
+                // getting the content length and content type from the header
                 while(1){
                     char *header = strtok(NULL, "\n");
                     if(strcmp(header, "\r")==0){
@@ -291,45 +323,152 @@ int main()
                         }
                         i++;
                     }
-                    if(strcmp(header_name, "Content-Length")==0){
-                        content_length = header+i+1;
-                    }else if(strcmp(header_name, "Content-Type")==0){
-                        content_type = header+i+1;
+                    if(strcmp(header_name, "Content-length")==0){
+                        i++;
+                        while(header[i]==' ') i++; 
+                        int j = 0;  
+                        while(header[i]!='\r'){
+                            content_length[j++] = header[i];
+                            i++;
+                        }
+                    }else if(strcmp(header_name, "Content-type")==0){
+                        i++;
+                        while(header[i]==' ') i++;
+                        while (header[i]!='\r')
+                        {
+                            content_type[i] = header[i];
+                            i++;
+                        }
+                        
                     }
 
                 }
 
-                printf("content_length: %s\n", content_length);
-                printf("content_type: %s\n", content_type);
+                int len = 0;
+                char response_[1000];
+                sscanf(content_length, "%d", &len);
 
-                char *body_start = strstr(dup, "\r\n\r\n");
-                body_start = body_start+4;
+                FILE *file_put = fopen(path+1, "wb");
+                if(file_put == NULL){
 
-                char body[1000000];
-                memset(body, '\0', 1000000);
-                strcpy(body, body_start);
-                printf("body: %s\n", body);
+                    // send the 404 Not Found response to the client if the file is not found
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "HTTP/1.1 404 Not Found\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+                    memset(response_, '\0', 1000);
+                    strcat(response_, "\r\n");
+                    send(newsockfd, response_, strlen(response_), 0);
+                    printf("%s", response_);
+                    close(newsockfd);
+                    exit(0);
+                }
 
-                FILE *file = fopen(path+1, "w");
-                fprintf(file, "%s", body);
-                fclose(file);
+                // getting the file content from the client
+                input_body(file_put, newsockfd, rem_string, len, rem_string_size);
+                
+                fclose(file_put);
+
+                // send the 200 OK response to the client
+                memset(response_, '\0', 1000);
+                strcat(response_, "HTTP/1.1 200 OK\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                // sending the required headers
+
+                time_t current_time = time(NULL);
+                struct tm *time_struct = localtime(&current_time);
+                time_struct->tm_mday  += 3;
+                time_t new_time = mktime(time_struct);
+                char *time_string = ctime(&new_time);
+                memset(response_, '\0', 1000);
+                strcat(response_, "Expires: ");
+                strcat(response_, time_string);
+
+                for(int i = 0;;i++){
+                    if(response_[i] == '\n'){
+                        response_[i] = '\r';
+                        response_[i+1] = '\n';
+                        break;
+                    }
+                }
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+                
+                memset(response_, '\0', 1000);
+                strcat(response_, "Cache-Control: no-store\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                memset(response_, '\0', 1000);
+                strcat(response_, "Content-language: en-us\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                memset(response_, '\0', 1000);
+                strcat(response_, "Content-length: \r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                char *dup_path = strdup(path);
+                memset(response_, '\0', 1000);
+                strcat(response_, "Content-type: ");
+                char *ext = strtok(dup_path, ".");
+                ext = strtok(NULL, ".");
+                strcat(response_, ext);
+                strcat(response_, "\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                time_t last_modified;
+                time(&last_modified);
+                memset(response_, '\0', 1000);
+                strcat(response_, "Last modified: ");
+                strcat(response_, ctime(&last_modified));
+                for(int i = 0;;i++){
+                    if(response_[i] == '\n'){
+                        response_[i] = '\r';
+                        response_[i+1] = '\n';
+                        break;
+                    }
+                }
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                memset(response_, '\0', 1000);
+                strcat(response_, "\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
 
             }else{
-                printf("Invalid command\n");
 
+                // send the 400 Bad Request response to the client if the request is invalid
+                fprintf(file_log, "Invalid\n");
                 char response_[1000];
                 memset(response_, '\0', 1000);
-                strcat(response_, "HTTP/1.1 400 Bad Request\n");
+                strcat(response_, "HTTP/1.1 400 Bad Request\r\n");
                 send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
                 memset(response_, '\0', 1000);
-                send(newsockfd, response_, strlen(response_)+1, 0);
+                strcat(response_, "\r\n");
+                send(newsockfd, response_, strlen(response_), 0);
+                printf("%s", response_);
+
+                close(newsockfd);
+                exit(0);
                 
             }
+
+            // closing the socket and the log file
+            fclose(file_log);
 			close(newsockfd);
 			exit(0);
 		}
         
     }
+
     close(sockfd);
 	
 	return 0;

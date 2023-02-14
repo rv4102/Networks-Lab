@@ -122,7 +122,7 @@ void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_s
     
 }
 
-int msg_rcv(char buf[], int sockfd, int buf_size, char rem_string[]){
+int msg_rcv(char buf[], int sockfd, char rem_string[]){
     char *body_start  = NULL;
     int k = 0;
     int end = 0;
@@ -178,23 +178,35 @@ int main(int argc, char *argv[])
 
 	printf("Server connected\n");
 
-    char buf[] = "GET /A4.pdf HTTP/1.1\r\nHost:localhost:8080\r\nUser-Agent:Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0\r\nAccept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\nAccept:pdf\r\nAccept-Language:en-US,en;q=0.5\r\nConnection:close\r\n\r\nksjdhashdjkasdjkasndjknasjkdnaksndkasndasndjkasndjkasndjknasjkdnasjkndasjndjkasnk";
+    char buf[] = "PUT /pp.pdf HTTP/1.1\r\nHost:localhost:8080\r\nContent-length: 113598\r\n\r\n";
     send(sockfd, buf, strlen(buf)+1, 0);
+
+	FILE *file = fopen("A4.pdf", "rb");
+	char buffer[1000];
+
+	int b;
+	while((b = fread(buffer,1,1000,file))>0){
+		int n = send(sockfd, buffer, b, 0);
+		printf("bytes: %d\n", n);
+		memset(buffer, '\0', 1000);
+	}
+	fclose(file);
 
 
 
 	char header[5000];
 	char rem_string[5000];
-	int rem_str_size = msg_rcv(header, sockfd, 5000, rem_string);
-	
-	//header parsing for finding the file size
-	FILE* fd = fopen("aa.pdf", "wb");
-
+	int rem_str_size = msg_rcv(header, sockfd, rem_string);
 	printf("%s", header);
+	
+	// //header parsing for finding the file size
+	// FILE* fd = fopen("aa.pdf", "wb");
 
-	input_body(fd, sockfd, rem_string, 113598, rem_str_size);
+	// printf("%s", header);
 
-	fclose(fd);
+	// input_body(fd, sockfd, rem_string, 113598, rem_str_size);
+
+	// fclose(fd);
 	close(sockfd);
 	// free(buf);
 	return 0;
