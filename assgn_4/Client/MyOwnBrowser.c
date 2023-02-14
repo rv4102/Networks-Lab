@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <time.h>
+#include <poll.h>
 #include <fcntl.h>
 
 #define BUFSIZE 200
@@ -36,7 +37,6 @@ void send_as_packet(char* message, int sockfd){
 }
 
 void split_command(char *msg, size_t len, char **split){
-    // printf("%zu\n", len);
     int i;
     size_t cmd_ptr=0, idx=0;
     for(i=0; i<len; i++){
@@ -61,9 +61,7 @@ void parse_addr(char *url, char *ip, char *port, char *fname, char *path, char *
 
     if( strcmp(command, "GET")==0 ){
         char *tok = strtok(url_copy, "/"); // tok == "http:"
-        // printf("%s\n", tok);
         tok = strtok(NULL, "/"); // tok == ip
-        // printf("%s\n", tok);
         strcpy(ip, tok);
         tok = strtok(NULL, "\0");
     
@@ -87,11 +85,9 @@ void parse_addr(char *url, char *ip, char *port, char *fname, char *path, char *
             ptr++;
         }
     }
-    else if( strcmp(command, "PUT") ){
+    else if( strcmp(command, "PUT")==0 ){
         char *tok = strtok(url_copy, "/"); // tok == "http:"
-        // printf("%s\n", tok);
         tok = strtok(NULL, "/"); // tok == ip
-        // printf("%s\n", tok);
         strcpy(ip, tok);
         tok = strtok(NULL, "\0");
 
@@ -104,9 +100,13 @@ void parse_addr(char *url, char *ip, char *port, char *fname, char *path, char *
         else{
             strcpy(port, "80");
         }
-
+        int j = 0;
         strcpy(path, "/");
-        strcat(path, tok);
+        int k = 1;
+        while(tok[j]!=':' && tok[j]!='\0'){
+            path[k++] = tok[j];
+            j++;
+        }
     }
 }
 
@@ -136,6 +136,24 @@ void get_content_type(char *url, char *type){
     }
 }
 
+void get_file_type_put(char *filename, char *type){
+    char file_name_copy[BUFSIZE];
+    strcpy(file_name_copy,filename);
+    char *tok = strtok(file_name_copy, ".");
+    tok = strtok(NULL, "\0");
+    if( strcmp(tok, "html") == 0 ){
+        strcpy(type, "text/html");
+    }
+    else if( strcmp(tok, "pdf") == 0 ){
+        strcpy(type, "application/pdf");
+    }
+    else if( strcmp(tok, "jpg") == 0 ){
+        strcpy(type, "image/jpg");
+    }
+    else{
+        strcpy(type, "text/*");
+    }
+}
 // Adjust date by a number of days +/-
 void DatePlusDays( struct tm* date, int days ){
     const time_t ONE_DAY = 24 * 60 * 60 ;
@@ -212,7 +230,6 @@ void frame_request_put(char **cmd_list, char *ip, char *port, char *path,
     char current_time[40], last_modified_time[40];
 
     get_times(last_modified_time, current_time);
-
     if(path[strlen(path)-1] != '/') 
         strcat(path, "/");
 
@@ -331,15 +348,30 @@ int check_and_parse_header(char *header, char *command, char *fileSize){
     return 0;
 }
 
-void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size){
+void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size, int *status){
     if(rem_string_size){
         fwrite(rem_string, 1, rem_string_size, fd);
     }
     int curr_size = rem_string_size;
-	// printf("tot_size: %d\n", tot_size);
-	// printf("curr_size: %d\n", curr_size);
     char buffer[101];
+
+    struct pollfd pfd[1];
+    pfd[0].fd = sockfd;
+    pfd[0].events = POLLIN;
+
     while(1){
+        int rc = poll(pfd, 1, 3000);
+        if(rc < 0){
+            perror("poll() failed.\n");
+            *status = 1;
+            break;
+        }
+        else if(rc == 0){
+            printf("Timeout.\n");
+            *status = 1;
+            break;
+        }
+
         for(int i = 0;i<101;i++) buffer[i] = '\0';
         int bytes_received = recv(sockfd, buffer, 100, 0);
 		if(bytes_received<0){
@@ -347,20 +379,36 @@ void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_s
 			exit(1);
 		}
         curr_size += bytes_received;
-		printf("bytes: %d %d\n", bytes_received, curr_size);
         fwrite(buffer, 1, bytes_received, fd);
         if(curr_size >= tot_size) break;
     }
 }
 
-int msg_rcv(char buf[], int sockfd, char rem_string[]){
+int msg_rcv(char buf[], int sockfd, char rem_string[], int *status){
     char *body_start  = NULL;
     int k = 0;
     int end = 0;
 	int start = 0;
     char buffer[101];
 	int a = 0;
+
+    struct pollfd fd[1];
+    fd[0].fd = sockfd;
+    fd[0].events = POLLIN;
+
     while(1){
+        int rc = poll(fd, 1, 3000);
+        if(rc < 0){
+            perror("poll() failed.\n");
+            *status = 1;
+            break;
+        }
+        else if(rc == 0){
+            printf("Timeout.\n");
+            *status = 1;
+            break;
+        }
+
         for(int i = 0;i<101;i++) buffer[i] = '\0';
         int bytes_received = recv(sockfd, buffer, 100, 0);
 		a += bytes_received;
@@ -373,7 +421,6 @@ int msg_rcv(char buf[], int sockfd, char rem_string[]){
             body_start = strstr(buf, "\r\n\r\n");
             if(body_start!=NULL){
                 end = 1;
-                // break;
             }
         }
         if(end) break;
@@ -384,6 +431,7 @@ int msg_rcv(char buf[], int sockfd, char rem_string[]){
 int main(){
     int sockfd, port_;
     struct sockaddr_in serv_addr;
+    int poll_failed=0;
     
     char *msg, **cmd_list, *ip, *port, *http_request, *rem_str, *filename, *type, *header, *fileSize, *path;
     msg = (char *)malloc(MAXRETSIZE * sizeof(char));
@@ -403,7 +451,8 @@ int main(){
 
 
     while(1){
-        if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) {
+        poll_failed = 0;
+        if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ){
             perror("socket() failed.\n");
             exit(-1);
         }
@@ -421,7 +470,6 @@ int main(){
             memset(filename, '\0', MAXFILENAMELEN);
             memset(path, '\0', BUFSIZE);
             parse_addr(cmd_list[1], ip, port, filename, path, cmd_list[0]);
-            printf("IP: %s\n", ip);
             sscanf(port, "%d", &port_);
 
             // connect to the server
@@ -445,26 +493,32 @@ int main(){
             printf("Request sent:\n%s\n\n", http_request);
 
             // send this as packets
-            send_as_packet(http_request, sockfd);
+            // send_as_packet(http_request, sockfd);
+            send(sockfd, http_request, strlen(http_request), 0);
 
             // get the header
             memset(rem_str, '\0', BUFSIZE);
             memset(header, '\0', MAXRETSIZE);
-            int rem_size = msg_rcv(header, sockfd, rem_str);
+            int rem_size = msg_rcv(header, sockfd, rem_str, &poll_failed);
+            if(poll_failed){
+                close(sockfd);
+                continue;
+            }
 
             // get file size from header
             memset(fileSize, '\0', 100);
             int v = check_and_parse_header(header, cmd_list[0], fileSize);
-            printf("%s\n", filename);
             if(v != 0){
                 // open the file to be written to
                 FILE* fd = fopen(filename, "wb");
                 // get the data
                 int fileSize_;
                 sscanf(fileSize, "%d", &fileSize_);
-                // printf("Content-length : %d\n", fileSize_);
-                // printf("Remaining string size: %d\n", rem_size);
-                input_body(fd, sockfd, rem_str, fileSize_, rem_size);
+                input_body(fd, sockfd, rem_str, fileSize_, rem_size, &poll_failed);
+                if(poll_failed){
+                    close(sockfd);
+                    continue;
+                }
 
                 // open the saved file inside an appropriate application 
                 char *argv[256];
@@ -505,6 +559,8 @@ int main(){
             memset(path, '\0', BUFSIZE);
             parse_addr(cmd_list[1], ip, port, filename, path, cmd_list[0]);
 
+            sscanf(port, "%d", &port_);
+
             // connect to the server
             serv_addr.sin_family = AF_INET;
             inet_aton(ip, &serv_addr.sin_addr);
@@ -517,13 +573,18 @@ int main(){
 
             // the type of content can be inferred
             memset(type, '\0', 20);
-            get_content_type(cmd_list[1], type);
+            get_file_type_put(cmd_list[2], type);
 
             memset(http_request, '\0', BUFSIZE);
-            FILE *fp = fopen(filename, "rb");
-            frame_request_put(cmd_list, ip, port, path, filename, fp, type, http_request);
+            FILE *fp = fopen(cmd_list[2], "r");
+            if(fp == NULL){
+                printf("file not found\n");
+                close(sockfd);
+                continue;
+            }
+            frame_request_put(cmd_list, ip, port, path, cmd_list[2], fp, type, http_request);
 
-            send_as_packet(http_request, sockfd);
+            send(sockfd, http_request, strlen(http_request), 0);
 
             // now we send the file itself
             int b;
@@ -538,8 +599,14 @@ int main(){
             char response[5000];
             memset(response, '\0', 5000);
             memset(rem_str, '\0', BUFSIZE);
-            msg_rcv(response, sockfd, rem_str);
+            msg_rcv(response, sockfd, rem_str, &poll_failed);
+            if(poll_failed){
+                close(sockfd);
+                continue;
+            }
             printf("Response received:\n%s\n\n", response);
+
+            close(sockfd);
         }
         else if( strcmp(cmd_list[0], "QUIT") == 0 ){
             printf("Quitting now.\nBye.\n");

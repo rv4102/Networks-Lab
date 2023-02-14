@@ -21,10 +21,12 @@ void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_s
     while(1){
         for(int i = 0;i<101;i++) buffer[i] = '\0';
         int bytes_received = recv(sockfd, buffer, 100, 0);
+    
 		if(bytes_received<0){
 			perror("recv");
 			exit(1);
 		}
+        printf("Received %d bytes\n", bytes_received);
         curr_size += bytes_received;
         fwrite(buffer, 1, bytes_received, fd);
         if(curr_size >= tot_size) break;
@@ -43,6 +45,7 @@ int msg_rcv(char buf[], int sockfd, char rem_string[]){
     while(1){
         for(int i = 0;i<101;i++) buffer[i] = '\0';
         int bytes_received = recv(sockfd, buffer, 100, 0);
+        printf("Received %d bytes\n", bytes_received);
 		a += bytes_received;
 
         for(int i = 0;i<bytes_received;i++){
@@ -252,17 +255,18 @@ int main()
                 send(newsockfd, response_, strlen(response_), 0);
                 printf("%s", response_);
 
-                fclose(file);
+                // fclose(file);
                 memset(response_, '\0', 1000);
 
                 // sending the file bit stream to the client
-                FILE* file_fd  = fopen(path+1, "rb");
+                // FILE* file_fd  = fopen(path+1, "rb");
                 int b;
-                while((b = fread(response_,1,1000,file_fd))>0){
+                fseek(file, 0, SEEK_SET);
+                while((b = fread(response_,1,1000,file))>0){
                     int n = send(newsockfd, response_, b, 0);
                     memset(response_, '\0', 1000);
                 }
-                fclose(file_fd);
+                fclose(file);
 
             }else if(strcmp(token, "PUT")==0){
 
