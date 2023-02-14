@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <sys/wait.h>
 
 // function to get the request body and write it to a file
 void input_body(FILE* fd, int sockfd, char rem_string[], int tot_size, int rem_string_size){

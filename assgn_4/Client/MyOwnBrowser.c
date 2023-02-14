@@ -10,6 +10,7 @@
 #include <time.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <sys/wait.h>
 
 #define BUFSIZE 200
 #define MAXRETSIZE 1000
