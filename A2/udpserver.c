@@ -7,8 +7,8 @@
 #include <sys/socket.h> 
 #include <arpa/inet.h> 
 #include <netinet/in.h> 
-#include <time.h>
-
+  
+#define MAXLINE 1024 
   
 int main() { 
     int sockfd; 
@@ -38,23 +38,15 @@ int main() {
     
     printf("\nServer Running....\n");
   
-    int n = -1; 
+    int n; 
     socklen_t len;
-    char buffer[100]; 
-    len = sizeof(cliaddr);
+    char buffer[MAXLINE]; 
  
-    //establishing connenction with the client
-    recvfrom(sockfd, (char *)buffer, 100, 0, (struct sockaddr *) &cliaddr, &len);
-    time_t tm;
-	time(&tm);
-	strcpy(buffer,ctime(&tm));
-
-    //sending date and time
-    n = sendto(sockfd, (const char *)buffer, strlen(buffer) + 1, 0, 
-		(const struct sockaddr *) &cliaddr, len); 
-
-    printf("Date and time sent\n");
+    len = sizeof(cliaddr);
+    n = recvfrom(sockfd, (char *)buffer, MAXLINE, 0, 
+			( struct sockaddr *) &cliaddr, &len); 
+    buffer[n] = '\0'; 
+    printf("%s\n", buffer); 
     close(sockfd);
-    printf("Server closed\n");
     return 0; 
 } 
