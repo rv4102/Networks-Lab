@@ -3,8 +3,10 @@
 void *thread_S(void *arg){
     while(1){
         sleep(SLEEP_TIME);
+        pthread_mutex_lock(&send_buf_mutex);
+        pthread_cond_wait(&send_active, &send_buf_mutex);
         // check if any pending messages to be sent
-        if(send_message->length == 0 || global_socket == -1){
+        if((send_message != NULL && send_message->length == 0 )|| global_socket == -1){
             continue;
         }
 
@@ -26,14 +28,17 @@ void *thread_S(void *arg){
         }
 
         pop(send_message);
+        pthread_mutex_unlock(&send_buf_mutex);
     }
     pthread_exit(NULL);
 }
 void *thread_R(void *arg){
     while(1){
         sleep(SLEEP_TIME);
+        pthread_mutex_lock(&received_buf_mutex);
+        pthread_cond_wait(&received_active, &received_buf_mutex);
         // check if space available in received_message
-        if(received_message->length == TABLE_SIZE || global_socket == -1){
+        if((received_message != NULL && received_message->length == TABLE_SIZE) || global_socket == -1){
             continue;
         }
 
@@ -55,6 +60,7 @@ void *thread_R(void *arg){
         msg[bytes_received-2] = '\0';
         push(received_message, msg, bytes_received-2, MAX_MSG_SIZE+2);
         free(msg);
+        pthread_mutex_unlock(&received_buf_mutex);
     }
     pthread_exit(NULL);
 }
@@ -65,16 +71,24 @@ int my_socket(int domain, int type, int protocol){
         exit(1);
     }
 
+    send_message = createQueue();
+    received_message = createQueue();
+    global_socket = -1;
+
+    send_active = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+    received_active = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+    send_buf_mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+    received_buf_mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
+
     pthread_t R, S;
     pthread_create(&R, NULL, thread_R, NULL);
     pthread_create(&S, NULL, thread_S, NULL);
     pthread_join(R, NULL);
     pthread_join(S, NULL);
 
-    send_message = createQueue();
-    received_message = createQueue();
+    global_socket = socket(domain, SOCK_STREAM, protocol);
 
-    return socket(domain, SOCK_STREAM, protocol);
+    return global_socket;
 }
 
 int my_bind(int socket, const struct sockaddr *address, socklen_t address_len){
@@ -113,8 +127,9 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
 
     push(send_message, msg, len, MAX_MSG_SIZE+2);
     free(msg);
-    global_socket = sockfd;
+    
     // signal that message is sent
+    pthread_cond_signal(&send_active);
     return len;
 }
 
@@ -137,6 +152,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
     pop(received_message);
     
     // signal that the message has been received
+    pthread_cond_signal(&received_active);
     return len;
 }
 
@@ -148,8 +164,8 @@ int my_close(int fd){
     while(received_message->length != 0){
         pop(received_message);
     }
-    free(send_message);
-    free(received_message);
+    // free(send_message);
+    // free(received_message);
     
     // delete any mutexes here
     return close(fd);

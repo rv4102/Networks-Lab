@@ -18,6 +18,9 @@
 #define TABLE_SIZE 10
 #define MAX_MSG_SIZE 5000 // 5000 bytes
 
+pthread_mutex_t send_buf_mutex, received_buf_mutex;
+pthread_cond_t received_active, send_active;
+
 struct Queue *send_message, *received_message;
 int global_socket;
 
