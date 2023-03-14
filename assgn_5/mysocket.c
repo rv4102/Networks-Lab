@@ -85,7 +85,7 @@ int my_listen(int sockfd, int backlog){
     return listen(sockfd, backlog);
 }
 
-int my_accept(int socket, struct sockaddr *address, int *address_len){
+int my_accept(int socket, struct sockaddr *address, socklen_t *address_len){
     return accept(socket, address, address_len);
 }
 
