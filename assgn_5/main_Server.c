@@ -8,6 +8,7 @@ int main(){
 	int i;
 	char buf[100];		/* We will use this buffer for communication */
 
+    // thread_R();
 	
 	if ((sockfd = my_socket(AF_INET, SOCK_MyTCP, 0)) < 0) {
 		perror("Cannot create socket\n");
@@ -41,14 +42,9 @@ int main(){
 
 		printf("Client connected\n");
 
-        thread_R((void *)&newsockfd);
         char buff[100];
-        memset(buff, '\0', 100);
+        for(int i = 0;i<100;i++) buff[i] = '\0';
         int n = my_recv(newsockfd, buff, 100, 0);
-        printf("Received: %s\n", buff);
-		memset(buff, '\0', 100);
-		thread_R((void *)&newsockfd);
-		n = my_recv(newsockfd, buff, 100, 0);
         printf("Received: %s\n", buff);
 
 		my_close(newsockfd);

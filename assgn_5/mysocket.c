@@ -1,13 +1,5 @@
 #include "mysocket.h"
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-pthread_mutex_t send_buf_mutex, received_buf_mutex;
-pthread_cond_t received_active, send_active;
-
-struct Queue *send_message, *received_message;
-int send_sockfd, recv_sockfd;
-=======
 pthread_mutex_t send_buf_mutex, received_buf_mutex;
 pthread_cond_t received_active, send_active;
 pthread_cond_t recv_pushed, send_popped;
@@ -15,17 +7,11 @@ pthread_t R, S;
 
 struct Queue *send_message, *received_message;
 int global_socket;
->>>>>>> ad7c317 (done part1)
 
 char *remaining_string;
 int rem_string_index;
 
 
-<<<<<<< HEAD
-=======
->>>>>>> 1c6e543 (Revert "working")
-=======
->>>>>>> ad7c317 (done part1)
 void *thread_S(void *arg){
     while(1){
         sleep(SLEEP_TIME);
@@ -37,23 +23,12 @@ void *thread_S(void *arg){
         struct QNode *node = peek(send_message);
         assert(node != NULL);
         char *msg = node->buf;
-<<<<<<< HEAD
-<<<<<<< HEAD
-        // printf("msg to be sent: %s\n", msg);
-        // repeat until msg is sent completely
-        // keep track of bytes sent and send remaining bytes
-        int bytes_sent = 0;
-        int msg_len = node->msg_len;
-=======
-=======
         printf("msg to be sent: %s\n", msg);
->>>>>>> ad7c317 (done part1)
 
         // repeat until msg is sent completely
         // keep track of bytes sent and send remaining bytes
         int bytes_sent = 0;
-        int msg_len = node->msg_len - 2; // last 2 bytes are separators
->>>>>>> 1c6e543 (Revert "working")
+        int msg_len = node->msg_len; // last 2 bytes are separators
         while(bytes_sent < msg_len){
             int bytes = send(global_socket, msg+bytes_sent, msg_len-bytes_sent, 0);
             if(bytes == -1){
@@ -73,12 +48,6 @@ void *thread_S(void *arg){
     pthread_exit(NULL);
 }
 void *thread_R(void *arg){
-<<<<<<< HEAD
-    int *temp = (int *)arg;
-    int sockfd = *temp;
-    printf("Thread R started with sockfd: %d\n", sockfd);
-=======
->>>>>>> 1c6e543 (Revert "working")
     while(1){
         sleep(SLEEP_TIME);
         pthread_mutex_lock(&received_buf_mutex);
@@ -104,53 +73,46 @@ void *thread_R(void *arg){
         int ending_index = 0;
 
         while(1){
-<<<<<<< HEAD
-<<<<<<< HEAD
-            int bytes = recv(sockfd, msg+bytes_received, MAX_MSG_SIZE+2-bytes_received, 0);
-=======
-            int bytes = recv(global_socket, msg+bytes_received, MAX_MSG_SIZE-bytes_received, 0);
->>>>>>> 1c6e543 (Revert "working")
-=======
             int bytes = recv(global_socket, msg+bytes_received, MAX_MSG_SIZE+2-bytes_received, 0);
             if(bytes == 0){
                 printf("Connection closed by server\n");
                 pthread_mutex_unlock(&received_buf_mutex);
                 pthread_exit(NULL);
             }
->>>>>>> ad7c317 (done part1)
             if(bytes == -1){
                 perror("Error receiving message.\n");
                 exit(1);
             }
+            for(int i = bytes_received; i<bytes_received+bytes; i++){
+                if(msg[i] == '\r'){
+                    r_received = 1;
+                }
+                else if(msg[i] == '\n' && r_received == 1){
+                    r_received = 0;
+                    end_recv = 1;
+                    ending_index = i-1;
+                    break;
+                }
+                else{
+                    r_received = 0;
+                }
+            }
+            for(int i = ending_index+2; i<bytes_received + bytes;i++){
+                remaining_string[rem_string_index++] = msg[i];
+            }
             bytes_received += bytes;
-            if(msg[bytes_received-2] == '\r' && msg[bytes_received-1] == '\n'){
+            if(end_recv == 1){
                 break;
             }
         }
 
         // remove message boundary \r\n
-<<<<<<< HEAD
-<<<<<<< HEAD
-        msg[ending_index+1] = '\0';
-        msg[ending_index+2] = '\0';
-        push(received_message, msg, ending_index, MAX_MSG_SIZE+2);
-        free(msg);
-        break;
-        // pthread_mutex_unlock(&received_buf_mutex);
-=======
-        msg[bytes_received-2] = '\0';
-        push(received_message, msg, bytes_received-2, MAX_MSG_SIZE+2);
-        free(msg);
-        pthread_mutex_unlock(&received_buf_mutex);
->>>>>>> 1c6e543 (Revert "working")
-=======
         push(received_message, msg, ending_index, MAX_MSG_SIZE+2);
         printf("Message received: %s\n", msg);
         printf("Message received of length: %d\n", ending_index);
         free(msg);
         pthread_mutex_unlock(&received_buf_mutex);
         pthread_cond_signal(&recv_pushed);
->>>>>>> ad7c317 (done part1)
     }
     printf("Thread R exiting\n");
     pthread_exit(NULL);
@@ -164,15 +126,10 @@ int my_socket(int domain, int type, int protocol){
 
     send_message = createQueue();
     received_message = createQueue();
-<<<<<<< HEAD
-    send_sockfd = -1;
-    recv_sockfd = -1;
+    global_socket = -1;
     remaining_string = (char *)malloc(sizeof(char) * (MAX_MSG_SIZE+2));
     memset(remaining_string, '\0', MAX_MSG_SIZE+2);
     rem_string_index = 0;
-=======
-    global_socket = -1;
->>>>>>> 1c6e543 (Revert "working")
 
     send_active = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
     received_active = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
@@ -226,23 +183,8 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
     msg[len] = '\r';
     msg[len+1] = '\n';
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    push(send_message, msg, len+2, MAX_MSG_SIZE+2);
-    // printf("Sent: %s", msg);
-    struct QNode *node = peek(send_message);
-    assert(node != NULL);
-    printf("Sent: %s", node->buf);
-=======
-    push(send_message, msg, len, MAX_MSG_SIZE+2);
->>>>>>> 1c6e543 (Revert "working")
-    free(msg);
-    
-    // signal that message is sent
-=======
     push(send_message, msg, len+2, MAX_MSG_SIZE+2);
     pthread_mutex_unlock(&send_buf_mutex);
->>>>>>> ad7c317 (done part1)
     pthread_cond_signal(&send_active);
     free(msg);
     return len;
@@ -266,16 +208,8 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
         buf_copy[i] = msg[i];
     }
     pop(received_message);
-<<<<<<< HEAD
-<<<<<<< HEAD
-
-=======
-    
->>>>>>> 1c6e543 (Revert "working")
-=======
     pthread_mutex_unlock(&received_buf_mutex);
 
->>>>>>> ad7c317 (done part1)
     // signal that the message has been received
     pthread_cond_signal(&received_active);
 
@@ -291,19 +225,12 @@ int my_close(int fd){
     while(received_message->length != 0){
         pop(received_message);
     }
-<<<<<<< HEAD
-    free(send_message);
-    free(received_message);
-    free(remaining_string);
-    
-=======
 
     pthread_cancel(R);
     pthread_cancel(S);
     pthread_join(R, NULL);
     pthread_join(S, NULL);
 
->>>>>>> ad7c317 (done part1)
     // delete any mutexes here
     pthread_mutex_destroy(&send_buf_mutex);
     pthread_mutex_destroy(&received_buf_mutex);

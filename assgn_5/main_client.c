@@ -6,6 +6,7 @@ int main(){
 
 	int i;
 	char buf[20];
+	// thread_S();
 
 	if ((sockfd = my_socket(AF_INET, SOCK_MyTCP, 0)) < 0) {
 		perror("Unable to create socket\n");
@@ -23,16 +24,9 @@ int main(){
 
 	printf("Server connected\n");
 	char buff[100];
-    memset(buff, '\0', 100);
+    for(int i = 0;i<100;i++) buff[i] = '\0';
     for(int i = 0;i<12;i++) buff[i] = 'a' + i;
-	printf("socket: %d\n", sockfd);
-	int n = my_send(sockfd, buff, strlen(buff), 0);
-	thread_S((void *)&sockfd);
-
-	memset(buff, '\0', 100);
-	strcpy(buff, "Hello from client");
-	n = my_send(sockfd, buff, strlen(buff), 0);
-	thread_S((void *)&sockfd);
+	int n = my_send(sockfd, buff, strlen(buff)+1, 0);
 
 
 	my_close(sockfd);
