@@ -27,14 +27,12 @@ void push(struct Queue* q, char *msg, int msg_len, int maxsize){
  
     if (q->rear == NULL) {
         q->front = q->rear = temp;
-        q->length = 1;
         return;
     }
 
     q->rear->next = temp;
     q->rear = temp;
-    int temp1 = q->length;
-    q->length = temp1 + 1;
+    (q->length)++;
 }
 
 struct QNode* peek(struct Queue* q){
@@ -59,8 +57,7 @@ void pop(struct Queue* q){
     if (q->front == NULL)
         q->rear = NULL;
     
-    int temp1 = q->length;
-    q->length = temp1 - 1;
+    (q->length)--;
 
     free(temp->buf);
     free(temp);
