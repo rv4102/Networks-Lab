@@ -20,7 +20,6 @@
 #define TABLE_SIZE 10
 #define MAX_MSG_SIZE 5000 // 5000 bytes
 
-
 int my_socket(int domain, int type, int protocol);
 int my_bind(int socket, const struct sockaddr *address, socklen_t address_len);
 int my_listen(int sockfd, int backlog);

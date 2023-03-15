@@ -4,7 +4,7 @@ pthread_mutex_t send_buf_mutex, received_buf_mutex;
 pthread_cond_t received_active, send_active;
 
 struct Queue *send_message, *received_message;
-int global_socket;
+int send_sockfd, recv_sockfd;
 
 char *remaining_string;
 int rem_string_index;
@@ -27,11 +27,11 @@ void *thread_S(void *arg){
         struct QNode *node = peek(send_message);
         assert(node != NULL);
         char *msg = node->buf;
-        printf("msg to be sent: %s\n", msg);
+        // printf("msg to be sent: %s\n", msg);
         // repeat until msg is sent completely
         // keep track of bytes sent and send remaining bytes
         int bytes_sent = 0;
-        int msg_len = node->msg_len; // last 2 bytes are separators
+        int msg_len = node->msg_len;
         while(bytes_sent < msg_len){
             int bytes = send(sockfd, msg+bytes_sent, msg_len-bytes_sent, 0);
             if(bytes == -1){
@@ -52,6 +52,7 @@ void *thread_S(void *arg){
 void *thread_R(void *arg){
     int *temp = (int *)arg;
     int sockfd = *temp;
+    printf("Thread R started with sockfd: %d\n", sockfd);
     while(1){
         sleep(SLEEP_TIME);
         // pthread_mutex_lock(&received_buf_mutex);
@@ -78,7 +79,6 @@ void *thread_R(void *arg){
         int ending_index = 0;
         while(1){
             int bytes = recv(sockfd, msg+bytes_received, MAX_MSG_SIZE+2-bytes_received, 0);
-            printf("msg received: %s\n", msg);
             if(bytes == -1){
                 perror("Error receiving message.\n");
                 exit(1);
@@ -107,10 +107,10 @@ void *thread_R(void *arg){
         }
 
         // remove message boundary \r\n
-        // msg[bytes_received-2] = '\0';
+        msg[ending_index+1] = '\0';
+        msg[ending_index+2] = '\0';
         push(received_message, msg, ending_index, MAX_MSG_SIZE+2);
         free(msg);
-        printf("done\n");
         break;
         // pthread_mutex_unlock(&received_buf_mutex);
     }
@@ -126,7 +126,8 @@ int my_socket(int domain, int type, int protocol){
 
     send_message = createQueue();
     received_message = createQueue();
-    global_socket = -1;
+    send_sockfd = -1;
+    recv_sockfd = -1;
     remaining_string = (char *)malloc(sizeof(char) * (MAX_MSG_SIZE+2));
     memset(remaining_string, '\0', MAX_MSG_SIZE+2);
     rem_string_index = 0;
@@ -183,11 +184,9 @@ ssize_t my_send(int sockfd, const void *buf, size_t len, int flags){
 
     push(send_message, msg, len+2, MAX_MSG_SIZE+2);
     // printf("Sent: %s", msg);
-    printf("length: %d\n", send_message->length);
     struct QNode *node = peek(send_message);
     assert(node != NULL);
     printf("Sent: %s", node->buf);
-    printf("length: %d\n", send_message->length);
     free(msg);
     
     // signal that message is sent
@@ -212,7 +211,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
         buf_copy[i] = msg[i];
     }
     pop(received_message);
-    printf("Received: %s", buf_copy);
+
     // signal that the message has been received
     // pthread_cond_signal(&received_active);
     return len;
@@ -226,8 +225,9 @@ int my_close(int fd){
     while(received_message->length != 0){
         pop(received_message);
     }
-    // free(send_message);
-    // free(received_message);
+    free(send_message);
+    free(received_message);
+    free(remaining_string);
     
     // delete any mutexes here
     return close(fd);
