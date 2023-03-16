@@ -1,10 +1,20 @@
-all: client server
+all: queue.o mysocket.o libmsocket.a server.o client.o 
 
-client:
-	gcc main_client.c mysocket.c queue.c -o client.o -lpthread
+client.o:
+	gcc main_client.c -lpthread -L. -lmsocket -o client.o
 
-server:
-	gcc main_Server.c mysocket.c queue.c -o server.o -lpthread
+server.o:
+	gcc main_server.c -lpthread -L. -lmsocket -o server.o
+
+libmsocket.a:
+	ar rcs libmsocket.a queue.o mysocket.o
+	rm queue.o mysocket.o
+
+queue.o:
+	gcc -c queue.c -o queue.o
+
+mysocket.o:
+	gcc -c mysocket.c -o mysocket.o
 
 clean:
-	rm -f *.o
+	rm -f *.o *.a
