@@ -27,7 +27,6 @@ int main(){
 
     my_listen(sockfd, 1);
     while (1) {
-
 		printf("\nWaiting for the client connection\n");
 		clilen = sizeof(cli_addr);
 		newsockfd = my_accept(sockfd, (struct sockaddr *) &cli_addr,

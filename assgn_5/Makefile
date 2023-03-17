@@ -1,10 +1,4 @@
-all: queue.o mysocket.o libmsocket.a server.o client.o 
-
-client.o:
-	gcc main_client.c -lpthread -L. -lmsocket -o client.o
-
-server.o:
-	gcc main_server.c -lpthread -L. -lmsocket -o server.o
+all: queue.o mysocket.o libmsocket.a
 
 libmsocket.a:
 	ar rcs libmsocket.a queue.o mysocket.o

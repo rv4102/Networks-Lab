@@ -16,7 +16,7 @@
 #include <assert.h>
 #include "queue.h"
 
-#define SLEEP_TIME 4
+#define SLEEP_TIME 1
 #define TABLE_SIZE 10
 #define MAX_MSG_SIZE 5000 // 5000 bytes
 

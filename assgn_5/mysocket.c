@@ -191,6 +191,7 @@ ssize_t my_recv(int sockfd, void *buf, size_t len, int flags){
 }
 
 int my_close(int fd){
+    sleep(5);
     // ensure send_messages is empty
     pthread_mutex_lock(&send_buf_mutex);
     while(send_message->length != 0){

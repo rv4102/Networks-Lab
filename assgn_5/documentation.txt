@@ -1,0 +1,95 @@
+# DesignDoc
+Team Members:
+–   Jatin Gupta (20CS10087)
+–   Rushil Venkateswar (20CS30045)
+
+# Description of Data Structrues used
+
+## Queue
+
+### struct QNode
+-   buf : The buffer for storing message
+-   msg_len : Stores length of message
+-   next : Pointer to next node
+
+### struct Queue
+-   front : pointer to the front of the queue
+-   rear : pointer to the rear of the queue
+-   length : length of the Queue
+-   newNode(char *, int, int) : create a new node, and copy message to the buffer of the node
+-   createQueue() : create a new empty queue
+-   push(struct Queue *, char *, int, int) : push a new node into the queue
+-   peek(struct Queue *) : returns the node pointed to by the front pointer
+-   pop(struct Queue *) : pops the node pointed to by the rear pointer
+
+# Description of MySocket Library
+-   send_message (queue data structure) : Send message table of maxsize 10 
+-   received_message (queue data structure) : Received message table of maxsize 10 
+-   global_socket (socket file descriptor) : Used for send/recv calls 
+-   send_buf_mutex : Mutex lock which prevents multiple access of send_message table
+-   received_buf_mutex : Mutex lock which prevents multiple access of received_message table
+-   received_active : Conditional variable which prevents overflow of received_message table
+-   send_active : Conditional variable which prevents underflow of send_message table
+-   recv_pushed : Conditional variable to signal that a new message has been pushed to the received_message table
+-   send_popped : Conditional variable to signal that a message has been popped from the send_message table
+
+- my_socket(int, int, int) : 
+    -   Creates send_message and received_message tables
+    -   Initialises cond signals and mutex locks
+    -   Starts the execution of S and R threads
+    -   Creates a socket and returns the socket file descriptor
+
+- my_bind(int, const struct sockaddr *, socklen_t) :
+    -   Wrapper around the bind() system call
+
+- my_listen(int, int) : 
+    -   Wrapper around the listen() system call
+
+- my_accept(int, struct sockaddr *, socklen_t *) : 
+    -   Sets the global_socket variable of the server side with the return value of accept() 
+    -   Sends the signal to R and S threads notifying that the global_socket has been set
+
+- my_connect(int, const struct sockaddr *, socklen_t) : 
+    -   Sets the global_socket variable of the client side with the return value of connect()
+
+- my_send(int, const void *, size_t, int) : 
+    -   Waits until the table is not full (send_popped signal is obtained from S thread after it pops a message from the table)
+    -   Locks the send_message table using send_buf_mutex
+    -   Pushes the message into the send_message table and returns the message length
+    -   Unlocks the send_message table and sends the signal to S thread notifying that a new message has been pushed to the send_message table
+
+- my_recv(int, void *, size_t, int) : 
+    -   Waits until the table is not empty (recv_pushed signal is obtained from R thread after it pushes a message into the table)
+    -   Locks the received_message table using received_buf_mutex
+    -   Pops the message from the received_message table and copies it to the buffer received as parameter
+    -   Unlocks the received_message table and sends the signal to R thread notifying that a message has been popped from the received_message table
+    -   Finally, returns the message length
+
+- thread_S(void *):
+    -   Waits if the table is empty or the global_socket has not been set
+    -   Locks the send_message table using send_buf_mutex
+    -   Reads the top message from the send_message table 
+    -   send calls :
+        1.  Sends the length of the message obtained from the table
+        2.  Makes send() calls until the entire message is sent
+    -   Pops the message from the send_message table
+    -   Unlocks the send_message table and sends the signal to my_send() notifying that a message has been popped
+
+- thread_R(void *):
+    -   Waits if the table is full or the global_socket has not been set
+    -   Locks the received_message table using received_buf_mutex
+    -   recv calls :
+        1.  Make recv() calls with MSG_PEEK flag while number of bytes received is less than sizeof(int) (to ensure that we get the entire 4 bytes of message length)
+        2.  Make recv() call to get the message length
+        3.  Make recv() calls unitl the entire message is received
+    -   Pushes the message into the received_message table
+    -   Unlocks the received_message table and sends the signal to my_recv() notifying that a new message has been pushed
+
+- my_close(int) : 
+    -   Sleeps for 5 seconds
+    -   Waits until all the messages in the send_message table has been sent
+    -   Sends a cancellation request to threads R and S using pthread_cancel()
+    -   Waits using pthread_join(), for the threads R and S to terminate
+    -   Destroys all the mutexes and cond varibales
+    -   Clears the send_message and received_message tables
+    -   Frees the send_message and received_message pointers
